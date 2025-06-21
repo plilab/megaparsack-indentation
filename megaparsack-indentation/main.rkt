@@ -1,30 +1,65 @@
 #lang racket/base
 
+(require racket/contract)
+(require racket/fixnum)
+(require racket/match)
+(require data/either)
+
 (module+ test
   (require rackunit))
 
-;; Notice
-;; To install (from within the package directory):
-;;   $ raco pkg install
-;; To install (once uploaded to pkgs.racket-lang.org):
-;;   $ raco pkg install <<name>>
-;; To uninstall:
-;;   $ raco pkg remove <<name>>
-;; To view documentation:
-;;   $ raco docs <<name>>
-;;
-;; For your convenience, we have included LICENSE-MIT and LICENSE-APACHE files.
-;; If you would prefer to use a different license, replace those files with the
-;; desired license.
-;;
-;; Some users like to add a `private/` directory, place auxiliary files there,
-;; and require them in `main.rkt`.
-;;
-;; See the current version of the racket style guide here:
-;; http://docs.racket-lang.org/style/index.html
+(provide
+ (contract-out
+  [struct indentation-state ((lower indentation?) (upper indentation?) (absmode boolean?) (relation relation?))]
+  [inf-indentation (indentation?)]
+  [inf-indentation? (-> indentation? boolean?)]
+  [update-indentation (-> indentation-state? indentation? (either/c string? indentation-state?))]))
 
-;; Code here
+(define (indentation? a)
+  (and/c (natural-number/c a) (fixnum? a)))
 
+(define (relation? a)
+  (or (eq? '> a)
+      (eq? '>= a)
+      (eq? '= a)
+      (eq? '* a)
+      (and (pair? a) (= (car a) 'const) (indentation? (cdr a)))))
+
+
+(struct indentation-state (lower upper absmode relation)
+  #:guard (lambda (lower upper absmode relation _name)
+            (unless (lower . <= . upper)
+              (error "Lower bound is greater than upper bound"))
+            (values lower upper absmode relation)))
+
+(define (inf-indentation? a) (= (most-positive-fixnum) a))
+(define inf-indentation (most-positive-fixnum))
+
+(define (update-indentation state indentation)
+  (match-define (indentation-state lower upper absmode relation) state)
+  (define rel (cond [absmode '=]
+                    [#t relation]))
+  (match rel
+    [(cons 'const x)
+     (cond
+       [(= x indentation) (success state)]
+       [else (failure "const")])]
+    ['* (success state)]
+    ['>
+     (cond
+       [(< lower indentation)
+        (success (struct-copy indentation-state state [lower (- indentation 1)]))]
+       [else (failure ">")])]
+    ['>=
+     (cond
+       [(<= lower indentation)
+        (success (struct-copy indentation-state state [upper indentation]))]
+       [else (failure ">=")])]
+    ['=
+     (cond
+       [(and (<= lower indentation) (<= indentation upper))
+        (success (struct-copy indentation-state state [lower indentation] [upper indentation]))]
+       [else (failure "=")])]))
 
 
 (module+ test
@@ -43,8 +78,8 @@
   (require racket/cmdline)
   (define who (box "world"))
   (command-line
-    #:program "my-program"
-    #:once-each
-    [("-n" "--name") name "Who to say hello to" (set-box! who name)]
-    #:args ()
-    (printf "hello ~a~n" (unbox who))))
+   #:program "my-program"
+   #:once-each
+   [("-n" "--name") name "Who to say hello to" (set-box! who name)]
+   #:args ()
+   (printf "hello ~a~n" (unbox who))))
