@@ -1,10 +1,13 @@
 #lang racket/base
 
+(require data/applicative)
+(require data/either)
+(require data/monad)
+(require megaparsack)
+(require megaparsack/text)
 (require racket/contract)
 (require racket/fixnum)
 (require racket/match)
-(require data/either)
-(require megaparsack)
 
 (module+ test
   (require rackunit))
@@ -33,15 +36,15 @@
               (error "Lower bound is greater than upper bound"))
             (values lower upper absmode relation)))
 
-(define (inf-indentation? a) (= (most-positive-fixnum) a))
 (define inf-indentation (most-positive-fixnum))
+(define (inf-indentation? a) (= inf-indentation a))
 
 (define (update-indentation state indentation)
   (match-define (indentation-state lower upper absmode relation) state)
   (define rel (cond [absmode '=]
-                    [#t relation]))
+                    [else relation]))
   (match rel
-    [(cons 'const x)
+    [(cons 'const x) ; '(const . x)
      (cond
        [(= x indentation) (success state)]
        [else (failure "const")])]
@@ -49,7 +52,7 @@
     ['>
      (cond
        [(< lower indentation)
-        (success (struct-copy indentation-state state [lower (- indentation 1)]))]
+        (success (struct-copy indentation-state state [upper (- indentation 1)]))]
        [else (failure ">")])]
     ['>=
      (cond
@@ -61,6 +64,58 @@
        [(and (<= lower indentation) (<= indentation upper))
         (success (struct-copy indentation-state state [lower indentation] [upper indentation]))]
        [else (failure "=")])]))
+
+(define indent-parameter (make-parser-parameter (indentation-state 0 inf-indentation #f '>)))
+
+(define (indent/p rel parser)
+  (do
+      ; previous indentation interval
+      ; calculate interval
+      ; set for child
+      ; run child parser
+      ; check interval and calculate another indentation on previous and this range. This is the range of this expression
+      [box <- (syntax-box/p parser)]
+
+    (define box-starting-column (add1 (srcloc-column (syntax-box-srcloc box))))
+    (do [previous-state <- (indent-parameter)]
+      [new-state <- (update-indentation previous-state box-starting-column)]
+      (indent-parameter new-state)
+      (pure (syntax-box-datum box)))))
+
+(define (indent-token/p rel check-soucrce-loc parser)
+  (do
+    ; set beforehand
+    ; look at source location; use relation in state to compare
+    ; modifies interval
+    ; calls the parser
+    ; grab indentation afterwards and source location
+      [box <- (syntax-box/p parser)]
+    (define box-starting-column (add1 (srcloc-column (syntax-box-srcloc box))))
+    (do [previous-state <- (indent-parameter)]
+      [new-state <- (update-indentation previous-state box-starting-column)]
+      (indent-parameter new-state)
+      (pure (syntax-box-datum box)))))
+
+(define whitespace/p (many/p (satisfy/p char-whitespace?)))
+
+(define bracket-parser
+  (many/p
+   (do whitespace/p
+     [x <- (or/p (do (char/p #\()
+                   whitespace/p
+                   [x <- (delay/p bracket-parser)]
+                   whitespace/p
+                   (char/p #\))
+                   (pure (list 'parens x)))
+                 (do (char/p #\[)
+                   whitespace/p
+                   [x <- (delay/p bracket-parser)]
+                   whitespace/p
+                   (char/p #\])
+                   (pure (list 'bracket x))))]
+     whitespace/p
+     (pure x))))
+
 
 (module+ test
   ;; Any code in this `test` submodule runs when this file is run using DrRacket
@@ -75,11 +130,6 @@
   ;; does not run when this file is required by another module. Documentation:
   ;; http://docs.racket-lang.org/guide/Module_Syntax.html#%28part._main-and-test%29
 
-  (require racket/cmdline)
-  (define who (box "world"))
-  (command-line
-   #:program "my-program"
-   #:once-each
-   [("-n" "--name") name "Who to say hello to" (set-box! who name)]
-   #:args ()
-   (printf "hello ~a~n" (unbox who))))
+  (printf "~a"
+          (parse-result! (parse-string bracket-parser "(   ( ()()()((([][][]))) )   ) [ ()  ]  "))))
+
