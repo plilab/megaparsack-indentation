@@ -4,6 +4,7 @@
 (require racket/fixnum)
 (require racket/match)
 (require data/either)
+(require megaparsack)
 
 (module+ test
   (require rackunit))
@@ -11,7 +12,7 @@
 (provide
  (contract-out
   [struct indentation-state ((lower indentation?) (upper indentation?) (absmode boolean?) (relation relation?))]
-  [inf-indentation (indentation?)]
+  [inf-indentation indentation?]
   [inf-indentation? (-> indentation? boolean?)]
   [update-indentation (-> indentation-state? indentation? (either/c string? indentation-state?))]))
 
@@ -60,7 +61,6 @@
        [(and (<= lower indentation) (<= indentation upper))
         (success (struct-copy indentation-state state [lower indentation] [upper indentation]))]
        [else (failure "=")])]))
-
 
 (module+ test
   ;; Any code in this `test` submodule runs when this file is run using DrRacket

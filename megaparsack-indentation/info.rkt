@@ -1,6 +1,6 @@
 #lang info
 (define collection "megaparsack-indentation")
-(define deps '("base"))
+(define deps '("base" "megaparsack"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 (define scribblings '(("scribblings/megaparsack-indentation.scrbl" ())))
 (define pkg-desc "Description Here")
