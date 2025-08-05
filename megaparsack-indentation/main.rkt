@@ -1,13 +1,15 @@
 #lang racket/base
 
-(require data/applicative)
-(require data/either)
-(require data/monad)
-(require megaparsack)
-(require megaparsack/text)
-(require racket/contract)
-(require racket/fixnum)
-(require racket/match)
+(require
+  data/applicative
+  data/either
+  data/monad
+  megaparsack
+  megaparsack/text
+  racket/contract
+  racket/fixnum
+  racket/match
+  racket/format)
 
 (module+ test
   (require rackunit))
@@ -40,6 +42,8 @@
 (define (inf-indentation? a) (= inf-indentation a))
 
 (define (update-indentation state indentation)
+  (define (make-error place)
+    (failure (format "Found a token at indentation ~a. Expecting a tokent at ~a." indentation place)))
   (match-define (indentation-state lower upper absmode relation) state)
   (define rel (cond [absmode '=]
                     [else relation]))
@@ -47,23 +51,23 @@
     [(cons 'const x) ; '(const . x)
      (cond
        [(= x indentation) (success state)]
-       [else (failure "const")])]
+       [else (make-error (~a "indentation" x))])]
     ['* (success state)]
     ['>
      (cond
        [(< lower indentation)
         (success (struct-copy indentation-state state [upper (- indentation 1)]))]
-       [else (failure ">")])]
+       [else (make-error (~a "an indentation greater than" lower))])]
     ['>=
      (cond
        [(<= lower indentation)
         (success (struct-copy indentation-state state [upper indentation]))]
-       [else (failure ">=")])]
+       [else (make-error (~a "an indentation greater than or equal to" lower))])]
     ['=
      (cond
        [(and (<= lower indentation) (<= indentation upper))
         (success (struct-copy indentation-state state [lower indentation] [upper indentation]))]
-       [else (failure "=")])]))
+       [else (make-error (~a "indentation between" lower "and" upper))])]))
 
 (define indent-parameter (make-parser-parameter (indentation-state 0 inf-indentation #f '>)))
 
