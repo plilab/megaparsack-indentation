@@ -19,3 +19,7 @@
 - Read through the paper
 - Look through the implementation
 - Read through the shrubbery logic
+
+- fuzzer
+- quickcheck style
+- change unnecessary monadic
