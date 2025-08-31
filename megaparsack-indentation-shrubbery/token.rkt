@@ -22,15 +22,25 @@
   at-comment/p)
 
 (define identifier/p
-  (error 'identifier/p "not implemented"))
+  (do
+    [ident <- (or/p
+               plainident/p
+               (do
+                 (string/p "#%")
+                 [ident <- plainident/p]
+                 (pure (format "#%~a" ident))))]
+    (pure (list 'identifier ident))))
 
 (define plainident/p
-  (error 'plainident/p "not implemented"))
+  (do
+    [starting-char <- (or/p letter/p (char/p #\=))]
+    [rest-chars <- (many/p (or/p letter/p (char/p #\=) digit/p))]
+    (pure (list->string (cons starting-char rest-chars)))))
 
 (define keyword/p
   (do
     (char/p #\~)
-    [identifier <- (plainident/p)]
+    [identifier <- plainident/p]
     (pure (list 'keyword identifier))))
 
 (define operator/p
@@ -138,7 +148,7 @@
 
 ;; string/p is already a function in megaparsack
 (define string-literal/p
-  (error 'string/p "not implemented"))
+  (error 'string-literal/p "not implemented"))
 
 (define bytestring/p
   (error 'bytestring/p "not implemented"))
