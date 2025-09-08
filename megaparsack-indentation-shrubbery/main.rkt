@@ -1,4 +1,4 @@
-#lang racket/base
+#lang at-exp racket/base
 
 (require (except-in racket/base do))
 (require data/monad)
@@ -16,14 +16,13 @@
              identifier/p
              plainident/p
              keyword/p
-             operator/p
              number/p
              boolean/p
-             void/p
-             string/p
-             bytestring/p
-             sexpression/p
-             comment/p)))
+             void/p)))
+             ;; string/p
+             ;; bytestring/p
+             ;; sexpression/p
+             ;; comment/p)))
 
 (define whitespace/p
   (many/p space/p))
@@ -32,14 +31,11 @@
   (many/p (satisfy/p (lambda (x) (and (char-whitespace? x) (not (char=? #\newline x)))))))
 
 (define group/p
-  (do
-    [delits <- (many/p atom/p #:sep non-nl-whitespace/p)]
-    non-nl-whitespace/p
-    (or/p)))
+  (many/p atom/p #:sep non-nl-whitespace/p))
 
 (define multi/p
   (do
-    [groups <- (list/p (absolute-indentation/p group/p) #:sep whitespace/p)]
+    [groups <- (many/p letter/p #:sep whitespace/p)]
     (pure (cons 'multi groups))))
 
 (define block/p
@@ -58,3 +54,9 @@
     (pure (cons 'alts (apply append nested-alts)))))
 
 (define shrubbery-parser multi/p)
+
+(module+ test
+  (require data/either)
+  (require rackunit)
+
+  (check-equal? (parse-string shrubbery-parser "a b c d") (success '(multi (group a b c d))) "A simple group"))

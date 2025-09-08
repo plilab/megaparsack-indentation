@@ -15,11 +15,18 @@
   number/p
   boolean/p
   void/p
-  string/p
-  bytestring/p
-  sexpression/p
-  comment/p
-  at-comment/p)
+  string/p)
+  ;; string/p
+  ;; bytestring/p
+  ;; sexpression/p
+  ;; comment/p
+  ;; at-comment/p)
+
+(define plainident/p
+  (do
+    [starting-char <- (or/p letter/p (char/p #\=))]
+    [rest-chars <- (many/p (or/p letter/p (char/p #\=) digit/p))]
+    (pure (list->string (cons starting-char rest-chars)))))
 
 (define identifier/p
   (do
@@ -31,12 +38,6 @@
                  (pure (format "#%~a" ident))))]
     (pure (list 'identifier ident))))
 
-(define plainident/p
-  (do
-    [starting-char <- (or/p letter/p (char/p #\=))]
-    [rest-chars <- (many/p (or/p letter/p (char/p #\=) digit/p))]
-    (pure (list->string (cons starting-char rest-chars)))))
-
 (define keyword/p
   (do
     (char/p #\~)
@@ -44,7 +45,8 @@
     (pure (list 'keyword identifier))))
 
 (define operator/p
-  (error 'operator "not implemented"))
+  ;; Incomplete
+  (char/p #\+))
 
 (define sign/p
   (or/p
@@ -72,7 +74,7 @@
 
 (define exponent/p
   (do
-    (one-of/p #\e #\E)
+    (one-of/p '(#\e #\E))
     (digit-string/p decimal/p)))
 
 ;; The number from rhombus is massaged into a form that can be read by string->number
@@ -147,18 +149,18 @@
   (chain (string/p "#void") (pure (void))))
 
 ;; string/p is already a function in megaparsack
-(define string-literal/p
-  (error 'string-literal/p "not implemented"))
-
-(define bytestring/p
-  (error 'bytestring/p "not implemented"))
-
-(define sexpression/p
-  (error 'sexpression/p "not implemented"))
-
-(define comment/p
-  (error 'comment/p "not implemented"))
+;; (define string-literal/p
+;;   (error 'string-literal/p "not implemented"))
+;;
+;; (define bytestring/p
+;;   (error 'bytestring/p "not implemented"))
+;;
+;; (define sexpression/p
+;;   (error 'sexpression/p "not implemented"))
+;;
+;; (define comment/p
+;;   (error 'comment/p "not implemented"))
 
 ;; Only within at-text
-(define at-comment/p
-  (error 'at-comment/p "not implemented"))
+;; (define at-comment/p
+;;   (error 'at-comment/p "not implemented"))
