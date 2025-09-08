@@ -15,9 +15,12 @@
   (require rackunit))
 
 (provide
+ indent/p
  update-indentation
  inf-indentation
  inf-indentation?
+ absolute-indentation/p
+ local-indentation/p
  (contract-out
   [struct indentation-state ((lower indentation?) (upper indentation?) (absmode boolean?) (relation relation?))]))
 
