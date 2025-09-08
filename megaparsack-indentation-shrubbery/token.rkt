@@ -13,7 +13,7 @@
   keyword/p
   operator/p
   number/p
-  boolean
+  boolean/p
   void/p
   string/p
   bytestring/p
@@ -137,7 +137,7 @@
             (pure integer-part))))]
     (pure (string->number number-string))))
 
-(define boolean
+(define boolean/p
   (or/p
     (chain (string/p "#true") (pure #t))
     (chain (string/p "#false") (pure #f))))
