@@ -1,0 +1,96 @@
+#lang rhombus/static
+
+import:
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+  "util/parsec.rhm" as p
+
+@util.example_input(test_input){
+Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53
+Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19
+Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1
+Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83
+Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
+Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11
+}
+
+class Card(number :: NonnegInt,
+           winning :: Set.of(NonnegInt),
+           picks :: Set.of(NonnegInt)):
+  method matching_picks() :: NonnegInt:
+    winning.intersect(picks).length()
+
+  method points() :: NonnegInt:
+    match matching_picks()
+    | 0: 0
+    | m: 2 ** (m - 1)
+
+def integer_set_p:
+  p.parse_sequence:
+    ns = p.many1(p.try(p.parse_sequence:
+                         p.spaces
+                         p.integer))
+    p.pure(Set(& ns))
+
+def card_p:
+  p.parse_sequence:
+    p.string("Card")
+    p.spaces
+    card_number = p.integer
+    p.char(#{#\:})
+    winning = integer_set_p
+    p.spaces
+    p.char(#{#\|})
+    picks = integer_set_p
+    p.choice(p.char(#{#\newline}), p.pure(#true))
+    p.pure(Card(card_number, winning, picks))
+
+fun run1(input):
+  def values(cards :: List.of(Card), []):
+    p.parse(p.many1(card_p), p.string_to_list(input))
+  for values(sum = 0):
+    each card: cards
+    sum + card.points()
+
+check:
+  run1(test_input) ~is 13
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 4))
+
+class CardCounts(count :: PosInt,
+                 next :: CardCounts || False):
+  export init
+  fun init(): CardCounts(1, #false)
+
+  property first :: PosInt: count
+
+  property rest :: CardCounts:
+    if next | next | CardCounts.init()
+
+  method add_copies(repeat :: NonnegInt, copies :: PosInt) :: CardCounts:
+    match repeat
+    | 0: this
+    | 1: CardCounts(count + copies, next)
+    | _: CardCounts(count + copies, rest.add_copies(repeat - 1, copies))
+
+fun run_part2(cards :~ List.of(Card),
+              counts :~ CardCounts,
+              num_processed :~ NonnegInt):
+  if cards == []
+  | num_processed
+  | def copies = counts.first
+    def picks = cards.first.matching_picks()
+    def next_counts = counts.rest.add_copies(picks, copies)
+    run_part2(cards.rest, next_counts, num_processed + copies)
+
+fun run2(input):
+  def values(cards :: List.of(Card), []):
+    p.parse(p.many1(card_p), p.string_to_list(input))
+  run_part2(cards, CardCounts.init(), 0)
+
+check:
+  run2(test_input) ~is 30
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 4))

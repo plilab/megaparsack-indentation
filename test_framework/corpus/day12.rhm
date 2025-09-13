@@ -1,0 +1,215 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(12)
+def test_input:
+  multiline:
+    "???.### 1,1,3"
+    ".??..??...?##. 1,1,3"
+    "?#?#?#?#?#?#?#? 1,3,1,6"
+    "????.#...#... 4,1,1"
+    "????.######..#####. 1,6,5"
+    "?###???????? 3,2,1"
+
+meta:
+  syntax_class Assignment
+  | '$(var :: Identifier) = $value ...'
+
+expr.macro 'loop $(f :: Identifier) ($(arg :: Assignment), ...):
+              $body
+              ...':
+  'block:
+     fun $f($arg.var, ...):
+       $body
+       ...
+     $f($arg.value ..., ...)'
+
+fun List.mul_by_five([elt, ...]):
+  [elt, ..., elt, ..., elt, ..., elt, ..., elt, ...]
+
+class Pattern(s :: String):
+  implements Indexable
+  override method get(ind) : s[ind]
+
+  method expand():
+    Pattern(s +& "?" +& s  +& "?" +& s  +& "?" +& s  +& "?" +& s)
+
+  method remaining(ind):
+    if ind >= 0
+    | racket.substring(s, 0, ind + 1)
+    | ""
+
+  method length() : s.length()
+  method is_functional(ind):
+    match s[ind] | #{#\.}: #true | #{#\#}: #false
+  method is_broken(ind):
+    match s[ind] | #{#\#}: #true | #{#\.}: #false
+  method is_unknown(ind):
+    match s[ind] | #{#\?}: #true | #{#\.}: #false | #{#\#}: #false
+  method unknowns():
+    for List (i : 0 .. length()):
+      keep_when is_unknown(i)
+      i
+
+  method find_contiguous_errors(ind, ~len: len):
+     if len > ind + 1:
+     | #false
+     | loop check_contiguous(i=ind):
+         cond
+         | i <= ind - len:
+             if i < 0 || is_unknown(i) || is_functional(i)
+             | i - 1
+             | #false
+         | is_unknown(i) || is_broken(i):
+             check_contiguous(i - 1)
+         | ~else: #false
+
+  method check_no_errors(i):
+    for values(result=#true):
+      each i : 0 .. i + 1
+      break_when !result
+      skip_when is_unknown(i) || is_functional(i)
+      !is_broken(i)
+
+
+fun parse_input(raw_input :: ReadableString):
+  for List (line : utils.string.split_lines(raw_input)):
+    let [pat, spec]: utils.string.split(line, " ")
+    let spec = String.to_number.map(utils.string.split(spec, ","))
+    Pair(Pattern(pat), spec)
+
+let mutable indent = 0
+fun calculate_combinations(pat :: Pattern, inds :: List.of(Int)):
+  def memo: MutableMap()
+
+  fun no_combinations(ind, ls):
+    let elt: Pair(ind,ls)
+    if memo.has_key(elt)
+    | memo[elt]
+    | let result: no_combinations_inner(ind, ls)
+      memo[elt] := result
+      result
+
+  // fun no_combinations_helper(ind, ls):
+  //   let spacing: racket.#{make-string}(indent,#{#\ })
+  //   println(racket.format("~a~ano_combinations(~a,~a) [~a]", indent, spacing, ind, ls, pat.remaining(ind)))
+  //   indent := indent + 1
+  //   let result: no_combinations_inner(ind, ls)
+  //   indent := indent - 1
+  //   println(racket.format("~a~a===>~a", indent, spacing, result))
+  //   result
+
+  fun
+  | no_combinations_inner(ind, []):
+      if pat.check_no_errors(ind) | 1 | 0
+  | no_combinations_inner(ind, List.cons(hd, tail)):
+      cond
+      | ind < 0: 0
+      | pat.is_unknown(ind):
+          // either assign or dont
+          let no_assign_combs:
+             let new_ind: pat.find_contiguous_errors(ind, ~len: hd)
+             if new_ind
+             | no_combinations(new_ind, tail)
+             | 0            
+          let assign_combs: no_combinations(ind - 1, List.cons(hd, tail))
+          assign_combs + no_assign_combs
+      | pat.is_functional(ind): no_combinations(ind - 1, List.cons(hd, tail))
+      | pat.is_broken(ind):
+          let new_ind: pat.find_contiguous_errors(ind, ~len: hd)
+          if new_ind
+          | no_combinations(new_ind, tail)
+          | 0
+
+  no_combinations(pat.length() - 1, inds.reverse())
+
+check:
+  Pattern("???.###").find_contiguous_errors(6, ~len: 3)
+  ~is 2
+
+check:
+  Pattern("???.###").find_contiguous_errors(4, ~len: 1)
+  ~is 2
+
+check:
+  Pattern("???.###").find_contiguous_errors(4, ~len: 2)
+  ~is #false
+
+check:
+  Pattern("???.###").find_contiguous_errors(2, ~len: 2)
+  ~is -1 
+
+check:
+  Pattern("???.###").find_contiguous_errors(0, ~len: 1)
+  ~is -2
+
+check:
+  calculate_combinations(Pattern("???.###"), [1,1,3])
+  ~is 1
+
+check:
+  calculate_combinations(Pattern(".??..??...?##."), [1,1,3])
+  ~is 4
+
+check:
+  calculate_combinations(Pattern("?#?#?#?#?#?#?#?"), [1,3,1,6])
+  ~is 1
+
+check:
+  calculate_combinations(Pattern("????.#...#..."), [4,1,1])
+  ~is 1
+  
+check:
+  calculate_combinations(Pattern("????.######..#####."), [1,6,5])
+  ~is 4
+
+check:
+  calculate_combinations(Pattern("?###????????"), [3,2,1])
+  ~is 10
+
+
+fun solve_for_part1(raw_input :: ReadableString):
+  for values(sum=0):
+    each Pair(pat, spec): parse_input(raw_input)
+    sum + calculate_combinations(pat, spec)
+
+check:
+  solve_for_part1(test_input)
+  ~is 21
+
+def result1: solve_for_part1(input)
+// aoc_api.submit_result_for_day(12, result1)
+
+
+check:
+  Pattern(".#").expand()
+  ~is Pattern(".#?.#?.#?.#?.#")
+
+fun solve_for_part2(raw_input :: ReadableString):
+  for values(sum=0):
+    each Pair(pat, spec): parse_input(raw_input)
+    sum + calculate_combinations(pat.expand(), List.mul_by_five(spec))
+
+check:
+  solve_for_part2(test_input)
+  ~is 525152
+
+def result2: solve_for_part2(input)
+// aoc_api.submit_result_for_day(12, result2, ~level: 2)

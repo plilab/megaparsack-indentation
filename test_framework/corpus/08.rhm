@@ -1,0 +1,136 @@
+#lang rhombus/static/and_meta
+
+import:
+  lib("racket/base.rkt")
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+  "util/parsec.rhm" as p
+
+@util.example_input(test_input1){
+RL
+
+AAA = (BBB, CCC)
+BBB = (DDD, EEE)
+CCC = (ZZZ, GGG)
+DDD = (DDD, DDD)
+EEE = (EEE, EEE)
+GGG = (GGG, GGG)
+ZZZ = (ZZZ, ZZZ)@("\n")
+}
+
+@util.example_input(test_input2){
+LLR
+
+AAA = (BBB, BBB)
+BBB = (AAA, ZZZ)
+ZZZ = (ZZZ, ZZZ)@("\n")
+}
+
+fun Map.merge(maps :: List.of(Map)) :~ Map:
+  for values(v = {}):
+    each m: maps
+    v ++ m
+
+annot.macro 'Direction':
+  'matching(#'L || #'R)'
+
+class DesertMap(directions :: Array.of(Direction),
+                nodes :: Map.of(String, Pair.of(String, String))):
+
+  method is_final(s :~ String):
+    s[2] == #{#\Z}
+
+  method measure_path(start):
+    def values(count, _):
+      for values(count = 0, current = start):
+        each i: 0..
+        break_when is_final(current)
+        values(count + 1, next_node(i, current))
+    count
+
+  method measure_path2():
+    def counts:
+      for List:
+        each n :~ String: nodes.keys()
+        keep_when n[2] == #{#\A}
+        measure_path(n)
+    base.lcm(&counts)
+
+  method next_node(i :~ NonnegInt, node :~ String):
+    match directions[i mod directions.length()]
+    | #'L: nodes[node].first
+    | #'R: nodes[node].rest
+
+operator a_p <|> b_p:
+  p.choice(a_p, b_p)
+
+fun char_val_p(str :: String, val):
+  p.try(p.parse_sequence:
+          p.char(str[0])
+          p.pure(val))
+
+def dir_p:
+  char_val_p("L", #'L) <|> char_val_p("R", #'R)
+
+def name_p:
+  p.parse_sequence:
+    a = p.any
+    b = p.any
+    c = p.any
+    p.pure(util.list_to_string([a,b,c]))
+
+def node_p:
+  p.parse_sequence:
+    n = name_p
+    p.spaces
+    p.char(#{#\=})
+    p.spaces
+    p.char(#{#\(})
+    l = name_p
+    p.char(#{#\,})
+    p.spaces
+    r = name_p
+    p.char(#{#\)})
+    p.spaces
+    p.pure({n: Pair(l, r)})
+
+def input_p:
+  p.parse_sequence:
+    dirs = p.many1(dir_p)
+    p.spaces
+    nodes = p.many1(node_p)
+    p.pure(DesertMap(Array(&dirs), Map.merge(nodes)))
+
+fun run1(input):
+  def values(m :~ DesertMap, []) = p.parse_string(input_p, input)
+  m.measure_path("AAA")
+
+check:
+  run1(test_input1) ~is 2
+  run1(test_input2) ~is 6
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 8))
+
+@util.example_input(test_input3){
+LR
+
+11A = (11B, XXX)
+11B = (XXX, 11Z)
+11Z = (11B, XXX)
+22A = (22B, XXX)
+22B = (22C, 22C)
+22C = (22Z, 22Z)
+22Z = (22B, 22B)
+XXX = (XXX, XXX)@("\n")
+}
+
+fun run2(input):
+  def values(m :~ DesertMap, []) = p.parse_string(input_p, input)
+  m.measure_path2()
+
+check:
+  run2(test_input3) ~is 6
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 8))

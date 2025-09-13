@@ -1,0 +1,178 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(16)
+def test_input:
+  multiline:
+   ".|...\\...."
+   "|.-.\\....."
+   ".....|-..."
+   "........|."
+   ".........."
+   ".........\\"
+   "..../.\\\\.."
+   ".-.-/..|.."
+   ".|....-|.\\"
+   "..//.|...."
+
+
+fun Array.of_list([x,...]):
+  Array(x,...)
+
+annot.macro 'Direction': 'matching(#'north || #'east || #'south || #'west)'
+
+fun step_in_direction(pos :: utils.Point, direction :: Direction) :: utils.Point:
+  match direction
+  | #'north: utils.Point(pos.x, pos.y - 1)
+  | #'south: utils.Point(pos.x , pos.y + 1)
+  | #'east: utils.Point(pos.x + 1, pos.y)
+  | #'west: utils.Point(pos.x - 1, pos.y)
+
+fun move_in_direction(pos :: utils.Point, direction :: Direction) :: Pair.of(utils.Point, Direction):
+  Pair(step_in_direction(pos, direction), direction)
+
+class Grid(
+  WIDTH :: Int, HEIGHT :: Int,
+  grid :: Array.of(String),
+  energised :: Array.of(Array.of(Boolean)),
+  seen_beams :: MutableSet,
+  mutable beams :: List.of(Pair.of(utils.Point, Direction)),
+  mutable no_energised :: Int,
+):
+  method valid_pos(pos :: utils.Point):: Boolean:
+    0 <= pos.x && pos.x < WIDTH && \
+    0 <= pos.y && pos.y < HEIGHT
+
+  method apply_beam(Pair(pos :: utils.Point, direction :: Direction)):
+    match [grid[pos.y][pos.x], direction]
+    | [#{#\.}, _]: [move_in_direction(pos, direction)]
+    | [#{#\/}, #'north]: [move_in_direction(pos, #'east)]
+    | [#{#\/}, #'east]: [move_in_direction(pos, #'north)]
+    | [#{#\/}, #'south]: [move_in_direction(pos, #'west)]
+    | [#{#\/}, #'west]: [move_in_direction(pos, #'south)]
+    | [#{#\\}, #'north]: [move_in_direction(pos, #'west)]
+    | [#{#\\}, #'west]: [move_in_direction(pos, #'north)]
+    | [#{#\\}, #'south]: [move_in_direction(pos, #'east)]
+    | [#{#\\}, #'east]: [move_in_direction(pos, #'south)]
+    | [#{#\|}, (#'north || #'south)]: [move_in_direction(pos, direction)]
+    | [#{#\-}, (#'east || #'west)]: [move_in_direction(pos, direction)]
+    | [#{#\|}, (#'east || #'west)]: [move_in_direction(pos, #'north), move_in_direction(pos, #'south)]
+    | [#{#\-}, (#'north || #'south)]:
+          [move_in_direction(pos, #'east), move_in_direction(pos, #'west)]
+
+  method valid_start_positions():
+    (for List (i : 0 .. WIDTH): Pair(utils.Point(i, 0), #'south)) ++ \
+    (for List (i : 0 .. WIDTH): Pair(utils.Point(i, HEIGHT - 1), #'north)) ++ \
+    (for List (i : 0 .. HEIGHT): Pair(utils.Point(0, i), #'east)) ++ \
+    (for List (i : 0 .. HEIGHT): Pair(utils.Point(WIDTH - 1, i), #'west))
+
+  method beams_finished():
+    beams == []
+
+  method run_beam():
+    while !beams_finished():
+      step_beam()
+        
+  method record_beam(beam):
+    seen_beams[beam] := #true
+    if energised[beam.first.y][beam.first.x]
+    | #void
+    | no_energised := no_energised + 1
+      energised[beam.first.y][beam.first.x] := #true
+
+  method step_beam():
+      def new_beam_list :
+        for List:
+          each beam: beams
+          skip_when seen_beams[beam]
+          record_beam(beam)
+          each new_beam: apply_beam(beam)
+          keep_when valid_pos(new_beam.first)
+          new_beam
+      beams := new_beam_list
+
+
+  method count_energised():
+    for values(count=0):
+      each arr : energised
+      each elt : arr
+      keep_when elt
+      count + 1
+        
+
+  constructor(s :: ReadableString, ~start_pos: start_pos = Pair(utils.Point(0,0), #'east)):
+    let grid = Array.of_list(
+      (fun (v:: ReadableString): v.to_string())
+        .map(utils.string.split_lines(s)))
+
+    let energised = Array.make(grid.length(), #false)
+
+    for(i : 0 .. energised.length()):
+      energised[i] := Array.make(grid[0].length(), #false)
+
+    super(grid[0].length(), grid.length(), grid, energised, MutableSet(), [start_pos], 0)
+
+fun solve_for_part1(raw_input :: ReadableString):
+  def grid : Grid(raw_input)
+  grid.run_beam()
+  grid.no_energised
+
+check:
+  solve_for_part1(test_input)
+  ~is 46
+
+def result1: solve_for_part1(input)
+
+fun solve_for_part2(raw_input :: ReadableString):
+  def mutable max_seen : #false
+  fun record_max_seen(seen):
+    cond
+    | !max_seen: max_seen := seen
+    | max_seen < seen: max_seen := seen
+    | ~else: #void
+
+  def mutable grids:
+     for List (pos: Grid(raw_input).valid_start_positions()):
+       def grid: Grid(raw_input, ~start_pos: pos)
+       for (i : 0 .. 10): grid.step_beam()
+       when grid.beams_finished()
+       | record_max_seen(grid.no_energised)
+       skip_when grid.beams_finished()
+       grid
+  grids := List.sort(grids, fun (l,r): l.no_energised > r.no_energised)
+
+  while grids != []:
+    let [grid, remaining, ...]: grids
+    grid.step_beam()
+    if grid.beams_finished()
+    | record_max_seen(grid.no_energised)
+      grids := [remaining, ...]
+    | grids := utils.list.insert_into_sorted(grid, [remaining, ...], ~key: fun (elt): elt.no_energised)
+  max_seen
+
+check:
+  solve_for_part2(test_input)
+  ~is 51
+
+def result2: solve_for_part2(input)
+result2

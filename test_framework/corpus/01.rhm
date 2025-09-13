@@ -1,0 +1,148 @@
+#lang rhombus/static
+
+import:
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+
+fun find_num(s :: String, i :: NonnegInt, step :: Int):
+  let ch = s[i]
+  if Char.is_numeric(ch)
+  | ch
+  | find_num(s, i + step, step)
+
+check:
+  find_num("123", 0, 1) ~is #{#\1}
+  find_num("123", 2, -1) ~is #{#\3}
+  find_num("abc123def", 0, 1) ~is #{#\1}
+  find_num("abc123def", 8, -1) ~is #{#\3}
+
+def ZERO = Char.to_int(#{#\0})
+
+fun char_to_value(ch :: Char):
+  Char.to_int(ch) - ZERO
+
+check:
+  char_to_value(#{#\0}) ~is 0
+  char_to_value(#{#\9}) ~is 9
+
+@util.example_input(test_input1){
+1abc2
+pqr3stu8vwx
+a1b2c3d4e5f
+treb7uchet
+}
+
+fun run1(input):
+  util.call_with_input_string input:
+    fun (inp :: Port.Input):
+      for values(sum = 0):
+        each a_line :~ String: util.in_lines(inp)
+        let first = find_num(a_line, 0, 1)
+        let last = find_num(a_line, a_line.length() - 1, -1)
+        char_to_value(first) * 10 + char_to_value(last) + sum
+
+check:
+  run1(test_input1) ~is 142
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 1))
+
+
+// Part Two
+
+/*
+  Create a `Pattern` for each considered sequence of characters.  Then
+  repeatedly take the regular expression derivative of the each pattern until
+  there is one pattern that completely matches.  If no patterns completely
+  match then restart the search at the character after the first matched in
+  the pattern.
+
+  A possible good optimization would be instead of restarting the search,
+  appending fresh patterns to the candidates after each step.
+
+  Another optimization (for allocation) would be to specifying string slices
+  for Pattern instead of using `String.substring`.
+*/
+
+class Pattern(string :: String, value :: NonnegInt):
+  method derivative(ch :: Char) :: Pattern || False:
+    if this.string[0] == ch
+    | this with (string = this.string.substring(1))
+    | #false
+
+  method tail_derivative(ch :: Char) :: Pattern || False:
+    def z = this.string.length() - 1
+    if this.string[z] == ch
+    | this with (string = this.string.substring(0, z))
+    | #false
+
+check:
+  Pattern("abc", 0).derivative(#{#\a}) ~is Pattern("bc", 0)
+  Pattern("abc", 0).derivative(#{#\b}) ~is #false
+
+fun pat_list_derivative(f :: Function, pats :: List.of(Pattern), ch :: Char):
+  for List:
+    each p: pats
+    def dp = f(p, ch)
+    keep_when dp
+    dp
+
+fun head_derivative(p :~ Pattern, ch :~ Char): p.derivative(ch)
+fun tail_derivative(p :~ Pattern, ch :~ Char): p.tail_derivative(ch)
+
+check:
+  pat_list_derivative(head_derivative,
+                      [Pattern("abc", 0),
+                       Pattern("abd", 1),
+                       Pattern("xyz", 3)], #{#\a})
+  ~is [Pattern("bc", 0), Pattern("bd", 1)]
+
+@util.example_input(test_input2){
+two1nine
+eightwothree
+abcone2threexyz
+xtwone3four
+4nineeightseven2
+zoneight234
+7pqrstsixteen
+}
+
+def num_pats :: List.of(Pattern):
+  Function.map(Pattern,
+               ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+               List.iota(10))
+    ++ Function.map(Pattern,
+                    ["zero", "one", "two", "three", "four",
+                     "five", "six", "seven", "eight", "nine"],
+                    List.iota(10))
+
+fun find_first_num(s :: String) :: NonnegInt:
+  fun match1(pats :: List.of(Pattern), i :: NonnegInt, j :: NonnegInt):
+    match pat_list_derivative(head_derivative, pats, s[j])
+    | []: match1(num_pats, i + 1, i + 1)
+    | [Pattern("", v)]: v
+    | ps: match1(ps, i, j + 1)
+  match1(num_pats, 0, 0)
+
+fun find_last_num(s :: String) :: NonnegInt:
+  fun match1(pats :: List.of(Pattern), i :: NonnegInt, j :: NonnegInt):
+    match pat_list_derivative(tail_derivative, pats, s[j])
+    | []: match1(num_pats, i - 1, i - 1)
+    | [Pattern("", v)]: v
+    | ps: match1(ps, i, j - 1)
+  def z = s.length() - 1
+  match1(num_pats, z, z)
+
+fun run2(input):
+  util.call_with_input_string input:
+    fun (inp :: Port.Input):
+      for values(sum = 0):
+        each a_line :~ String: util.in_lines(inp)
+        let first = find_first_num(a_line)
+        let last = find_last_num(a_line)
+        first * 10 + last + sum
+
+check run2(test_input2) ~is 281
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 1))

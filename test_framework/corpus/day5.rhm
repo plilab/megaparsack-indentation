@@ -1,0 +1,271 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(5)
+def test_input:
+  multiline:
+   "seeds: 79 14 55 13"
+   ""
+   "seed-to-soil map:"
+   "50 98 2"
+   "52 50 48"
+   ""
+   "soil-to-fertilizer map:"
+   "0 15 37"
+   "37 52 2"
+   "39 0 15"
+   ""
+   "fertilizer-to-water map:"
+   "49 53 8"
+   "0 11 42"
+   "42 0 7"
+   "57 7 4"
+   ""
+   "water-to-light map:"
+   "88 18 7"
+   "18 25 70"
+   ""
+   "light-to-temperature map:"
+   "45 77 23"
+   "81 45 19"
+   "68 64 13"
+   ""
+   "temperature-to-humidity map:"
+   "0 69 1"
+   "1 0 69"
+   ""
+   "humidity-to-location map:"
+   "60 56 37"
+   "56 93 4"
+
+    
+fun parse_seed_list(raw_seed_list :: ReadableString) :: List.of(Int):
+  let ["seeds", components] = utils.string.split(raw_seed_list, ":")
+  let [num_str, ...] = utils.string.split(components, " ")
+  [String.to_number(num_str), ...]
+
+fun parse_map_spec(map_spec :: ReadableString):
+  let [mapping_str, "map:"]: utils.string.split(map_spec, " ")
+  let [from, to]: utils.string.split(mapping_str, "-to-")
+  Pair(from, to)
+
+class Range(start :: Int, len :: Int):
+  method is_empty():
+    len == 0
+
+class SourceMapping(dest_start :: Int, source_start :: Int, len :: Int):
+
+  method map_range_internal(range :: Range):
+    cond
+    | source_start <= range.start && range.start + range.len <= source_start + len:
+        let diff: range.start - source_start
+        let range: Range(dest_start + diff, range.len)
+        Pair(range,[])
+
+    | range.start <= source_start && source_start + len <= range.start + range.len:
+        let new_range: Range(dest_start, len)
+        let range_before: Range(range.start, source_start - range.start)
+        let range_after: Range(source_start + len, range.start + range.len - source_start - len)
+        Pair(new_range,[range_before, range_after])
+
+    | source_start <= range.start && range.start < source_start + len:
+        let diff: range.start - source_start
+        let len: source_start + len - range.start
+        let new_range: Range(dest_start + diff, len)
+        Pair(new_range,[Range(range.start + new_range.len, range.len - new_range.len)])
+    
+    | source_start < range.start + range.len && range.start + range.len <= source_start + len:
+        let diff: range.start + range.len - source_start
+        let new_range: Range(dest_start, diff)
+        Pair(new_range,[Range(range.start, range.len - new_range.len)])
+
+    | ~else: #false
+
+  method map_range(range :: Range):
+     let mapped_range: map_range_internal(range)
+     if !mapped_range
+     | #false
+     | let Pair(range, unchanged_elts) = mapped_range
+       let unchanged_nonempty:
+         for List:
+           each base_range: unchanged_elts
+           skip_when base_range.is_empty()
+           base_range
+       Pair(range, unchanged_nonempty)
+
+  method map(input :: Int):
+    let diff = input - source_start
+    if 0 <= diff && diff < len
+    | dest_start + diff
+    | #false
+
+
+check:
+  SourceMapping(10, 5, 5).map_range(Range(6,2))
+  ~is Pair(Range(11, 2), [])
+
+check:
+  SourceMapping(10, 5, 5).map_range(Range(8,4))
+  ~is Pair(Range(13, 2), [Range(10, 2)])
+
+check:
+  SourceMapping(10, 5, 5).map_range(Range(2,4))
+  ~is Pair(Range(10,1), [Range(2,3)])
+
+check:
+  SourceMapping(10, 5, 5).map_range(Range(9,1))
+  ~is Pair(Range(14, 1), [])
+
+class Mapping(from :: String, to :: String, mappings :: List.of(SourceMapping)):
+
+  method map_range(range :: Range):
+    for values(result=#false):
+      each mapping: mappings
+      def mapped_range: mapping.map_range(range)
+      skip_when (!mapped_range)
+      final_when mapped_range
+      mapped_range
+
+  method map_ranges(ranges :: List.of(Range)):
+    fun loop(unmapped_ranges, mapped_ranges):
+      match unmapped_ranges
+      | []: mapped_ranges.reverse()
+      | List.cons(range, unmapped_ranges):
+          let mapped_range: map_range(range)
+          if !mapped_range
+          | loop(unmapped_ranges, List.cons(range, mapped_ranges))
+          | let Pair(new_range, remaining_ranges): mapped_range
+            loop(remaining_ranges ++ unmapped_ranges, List.cons(new_range, mapped_ranges))
+    loop(ranges, [])
+ 
+  method map(input :: Int) :: Int:
+    for values(result=input):
+      each mapping: mappings
+      def mapped_input: mapping.map(input)
+      skip_when (!mapped_input)
+      final_when mapped_input
+      mapped_input
+
+check:
+  Mapping(
+    "seed",
+    "soil",
+    [SourceMapping(100, 0, 5), SourceMapping(207,7,2), SourceMapping(110,10,5)]
+ // 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 
+ // [         ]   [   ] [               ]
+ // [                   ]
+ // [         ][ ][   ][]
+  ).map_ranges([Range(0, 10)])
+  ~is [Range(100,5), Range(207,2), Range(5, 2), Range(9,1)]
+
+fun parse_conversion_range(range :: ReadableString) :: SourceMapping:
+  let [dest_start, source_start, len]: utils.string.split(range, " ")
+  SourceMapping(
+    String.to_number(dest_start),
+    String.to_number(source_start),
+    String.to_number(len)
+  )
+
+fun parse_map(raw_map :: List.of(ReadableString)):
+  let [raw_map_spec, component, ...]: raw_map
+  let Pair(from, to): parse_map_spec(raw_map_spec)
+  let mappings: [parse_conversion_range(component), ...]
+  values(from, to, Mapping(from, to, mappings))
+
+fun construct_mapping(raw_maps :: List) :: Map.of(String, Pair.of(String, Mapping)):
+  let map : MutableMap()
+  fun insert_mapping(from, to, mapping):
+    if map.has_key(from)
+    | error("found duplicate mapping!!!", from)
+    | map[from] := Pair(to, mapping)
+  for (raw_map: raw_maps):
+    let values(from, to, mapping): parse_map(raw_map)
+    insert_mapping(from, to, mapping)
+  map.snapshot()
+
+
+fun resolve_input(source :~ Pair.of(String, Int), ctx :~ Map.of(String, Pair.of(String, Mapping))):
+   let Pair(space, vl) = source
+   if ctx.has_key(space)
+   | let Pair(new_space, mapping): ctx[space]
+     let new_vl: mapping.map(vl)
+     let new_source: Pair(new_space, new_vl)
+     resolve_input(new_source, ctx)
+   | source
+
+fun resolve_inputs(space :~ String, vls :~ List.of(Int), ctx :~ Map.of(String, Pair.of(String, Mapping))):
+   if ctx.has_key(space)
+   | let Pair(new_space, mapping): ctx[space]
+     let new_vls: mapping.map.map(vls)
+     resolve_inputs(new_space, new_vls, ctx)
+   | vls
+
+fun resolve_input_ranges(space :~ String, ranges :~ List.of(Range), ctx :~ Map.of(String, Pair.of(String, Mapping))):
+   if ctx.has_key(space)
+   | let Pair(new_space, mapping): ctx[space]
+     let new_ranges: mapping.map_ranges(ranges)
+     resolve_input_ranges(new_space, new_ranges, ctx)
+   | ranges
+
+fun parse_input(raw_input :~ ReadableString):
+  let input = utils.string.split(raw_input, "\n", ~keep_blank: #true)
+  let [[raw_seed_list], raw_map, ...]: utils.list.partition(input, "")
+  let seed_list: parse_seed_list(raw_seed_list)
+  let maps: construct_mapping([raw_map, ...])
+  Pair(seed_list, maps)
+
+fun solve_part1(raw_input :~ ReadableString):
+  let Pair(seeds, ctx): parse_input(raw_input)
+
+  let [Pair("location", vl), ...]:
+    for List:
+      each seed: seeds
+      resolve_input(Pair("seed", seed), ctx)
+
+  racket.min(vl, ...)
+
+check:
+  solve_part1(test_input)
+  ~is 35
+
+// let result1: solve_part1(input)
+// aoc_api.submit_result_for_day(5, result1)
+
+fun calculate_seeds(seed_ranges) :~ List.of(Int):
+  match seed_ranges
+  | [start, len, rest, ...]:
+      let current: Range(start, len)
+      let rest: calculate_seeds([rest, ...])
+      List.cons(current, rest)
+  | []: []
+
+fun solve_part2(raw_input :~ ReadableString):
+  let Pair(seed_ranges, ctx): parse_input(raw_input)
+  let seed_ranges: calculate_seeds(seed_ranges)
+  let ranges: resolve_input_ranges("seed", seed_ranges, ctx)
+  let [Range(vl, _), ...]: ranges
+  racket.min(vl, ...)
+
+check:
+  solve_part2(test_input)
+  ~is 46
+
+let result2: solve_part2(input)
+// aoc_api.submit_result_for_day(5, result2)

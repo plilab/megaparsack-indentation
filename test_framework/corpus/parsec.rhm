@@ -1,0 +1,253 @@
+#lang rhombus/static/and_meta
+
+import:
+  lib("racket/base.rkt")
+  rhombus/compat/stream open
+
+export:
+  string_to_list
+  parse
+  parse_string
+
+  pure
+  sequence
+  choice
+  try
+  satisfy
+  any
+  label
+  char
+  string
+  digit
+  integer
+  spaces
+  many1
+
+  parse_sequence
+
+namespace R:
+  export to_string
+
+fun string_to_list(string :: String) :~ List.of(Char):
+  for List:
+    each i: 0..string.length()
+    string[i]
+
+class Message(token, expected :: List.of(String)):
+  method replace_expected(label :: String) :: Message:
+    this with (expected = [label])
+
+  method to_string():
+    "got "
+      ++ format_token()
+      ++ " expected "
+      ++ format_expected()
+
+  method merge(other :: Message) :: Message:
+    this with (expected = expected ++ other.expected)
+
+  private method format_token() :: String:
+    match token
+    | []: "<empty>"
+    | _: R.to_string(token, ~mode: #'expr)
+
+  private method format_expected() :: String:
+    match expected
+    | []: "<empty>"
+    | [e]: e
+    | es: format_expected_long(es)
+
+  private method
+  | format_expected_long([e0, e1]):
+      use_dynamic
+      e0.to_string() ++ " or " ++ e1.to_string()
+  | format_expected_long([e, &erest]):
+      use_dynamic
+      e.to_string() ++ ", " ++ format_expected_long(erest)
+
+
+class Ok(value, stream :: Stream, message :: Message)
+
+class Error(message :: Message)
+
+annot.macro 'Result': 'Ok || Error'
+
+class Parsed(result :: Result, is_empty :: Boolean = #false)
+
+fun pure(v):
+  fun (stream :: Stream):
+    Parsed(Ok(v, stream, Message(#false, [])))
+
+fun sequence(p, f):
+  fun (stream0 :: Stream):
+    match p(stream0)
+    | Parsed(Ok(v, stream1, _), #true):
+        f(v)(stream1)
+    | Parsed(_, #true) && p: p
+    | Parsed(Ok(v, stream1, _), #false):
+        match f(v)(stream1)
+        | Parsed(_, #true) && p: p with (is_empty = #false)
+        | p: p
+    | p: p
+
+fun choice(a_p, b_p):
+  fun merge_ok(v, stream, message0 :: Message, message1 :: Message):
+    Parsed(Ok(v, stream, message0.merge(message1)), #true)
+  fun merge_error(message0 :: Message, message1 :: Message):
+    Parsed(Error(message0.merge(message1)), #true)
+  fun (stream0 :: Stream):
+    match a_p(stream0)
+    | Parsed(Error(message0), #true):
+        match b_p(stream0)
+        | Parsed(Error(message1), #true):
+            merge_error(message0, message1)
+        | Parsed(Ok(v, stream1, message1), #false):
+            merge_ok(v, stream1, message0, message1)
+        | parsed: parsed
+    | Parsed(Ok(v, stream1, message0), #true):
+        match b_p(stream0)
+        | Parsed(Error(message1), #true):
+            merge_ok(v, stream1, message0, message1)
+        | Parsed(Ok(_, _, message1), #true):
+            merge_ok(v, stream1, message0, message1)
+        | parsed: parsed
+    | parsed: parsed
+
+fun satisfy(is_satisfied):
+  fun (stream :: Stream):
+    if stream.is_empty()
+    | Parsed(Error(Message(stream, [])), #true)
+    | def tok = stream.first
+      if is_satisfied(tok)
+      | Parsed(Ok(tok, stream.rest, Message(#false, [])), #false)
+      | Parsed(Error(Message(tok, [])), #true)
+
+fun any(stream :: Stream):
+  if stream.is_empty()
+  | Parsed(Error(Message(stream, [])), #true)
+  | def tok = stream.first
+    Parsed(Ok(tok, stream.rest, Message(#false, [])), #false)
+
+fun label(name :: String, p):
+  fun (stream :: Stream):
+    match p(stream)
+    | Parsed(Error(message), #true):
+        Parsed(Error(message.replace_expected(name)), #true)
+    | Parsed(Ok(_, _, message) && ok, #true):
+        Parsed(ok with (message = message.replace_expected(name)), #true)
+    | parsed: parsed
+
+fun try(p):
+  fun (stream :: Stream):
+    match p(stream)
+    | Parsed(Error(_) && err, #false) && parsed:
+        parsed with (is_empty = #true)
+    | parsed: parsed
+
+fun char(char :: Char):
+  label("'" ++ to_string(char, ~mode: #'expr) ++ "'",
+        satisfy(fun (schar): char == schar))
+
+fun string(string :: String):
+  def size = string.length()
+  for values(cont_p = pure(string)):
+    each i: 0..size
+    sequence(char(string[size - i - 1]),
+             fun (_ignore): cont_p)
+
+meta:
+  syntax_class ParseStep:
+  | '$(var :: Identifier) = $parse ...'
+  | '$parse ...':
+      field var: Syntax.make_temp_id()
+
+expr.macro
+| 'parse_sequence:
+     $(step :: ParseStep)':
+    '$step.parse ...'
+| 'parse_sequence:
+     $(step0 :: ParseStep)
+     $steps
+     ...':
+    'sequence($step0.parse ..., fun ($step0.var):
+                                    parse_sequence:
+                                      $steps
+                                      ...)'
+
+fun many1(p):
+  def rec:
+    parse_sequence:
+      v = p
+      vs = choice(rec, pure([]))
+      pure(List.cons(v, vs))
+  rec
+
+def digit:
+  label("<digit>", satisfy(Char.is_numeric))
+
+fun chars_to_number(sign, chars):
+  def do_sign:
+    if sign | values | fun(x): x * -1
+  do_sign(String.to_int(base.#{list->string}(chars)))
+
+def integer:
+  parse_sequence:
+    sign = choice(parse_sequence:
+                    try(char(#{#\-}))
+                    pure(#false),
+                  pure(#true))
+    ds = many1(digit)
+    pure(chars_to_number(sign, ds))
+
+def spaces:
+  label("<whitespace>", many1(satisfy(Char.is_whitespace)))
+
+fun parse(p, s):
+  match p(s)
+  | Parsed(Ok(v, s, _), _): values(v, s)
+  | Parsed(Error(message), _):
+      throw Exn.Fail(message.to_string(),
+                     Continuation.current_marks())
+
+fun parse_string(p, s :: String):
+  parse(p, string_to_list(s))
+
+check:
+  def values(results, stream) = parse(pure(42), [])
+  [results, stream]
+  ~is [42, []]
+
+check:
+  def values(results, stream) = parse(pure(42), ["abc"])
+  [results, stream]
+  ~is [42, ["abc"]]
+
+check:
+  fun | x(y :: Int): #true
+      | x(y): #false
+  def values(results, stream) = parse(satisfy(x), [123])
+  [results, stream]
+  ~is [123, []]
+
+check:
+  fun | x(y :: Int): #true
+      | x(y): #false
+  parse(satisfy(x), ["asdasd"])
+  ~raises "asdasd"
+
+check:
+  def p:
+    parse_sequence:
+      pure(42)
+  def values(results, stream) = parse(p, [])
+  [results, stream]
+  ~is [42, []]
+
+check:
+  def values(results, stream) = parse(string("red"), string_to_list("red"))
+  [results, stream]
+  ~is ["red", []]
+
+check:
+  parse(string("red"), [#{#\r}, #{#\e}])
+  ~raises "got <empty> expected '#{#\\d}'"

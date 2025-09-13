@@ -1,0 +1,283 @@
+#lang rhombus/static
+
+import:
+  lib("racket/base.rkt")
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+  "util/parsec.rhm" as p
+
+@util.example_input(test_input){
+seeds: 79 14 55 13
+
+seed-to-soil map:
+50 98 2
+52 50 48
+
+soil-to-fertilizer map:
+0 15 37
+37 52 2
+39 0 15
+
+fertilizer-to-water map:
+49 53 8
+0 11 42
+42 0 7
+57 7 4
+
+water-to-light map:
+88 18 7
+18 25 70
+
+light-to-temperature map:
+45 77 23
+81 45 19
+68 64 13
+
+temperature-to-humidity map:
+0 69 1
+1 0 69
+
+humidity-to-location map:
+60 56 37
+56 93 4
+}
+
+class Span(start :: NonnegInt, end :: PosInt):
+  constructor (start :: NonnegInt, end :: PosInt):
+    unless start <= end
+    | error(#'Span, @util.fmt{invalid span: start: @start > end: @end})
+    super(start, end)
+
+  method less(other :: Span) :: Boolean:
+    start < other.start
+
+  method add_delta(amount :: Int) :: Span:
+    Span(start + amount, end + amount)
+
+
+fun Span.from_parse(~start: start :: NonnegInt,
+                    ~length: length :: PosInt = 1) :: Span:
+  Span(start, start + length - 1)
+
+class MapEntry(start :: NonnegInt, end :: PosInt, dest :: NonnegInt):
+  property delta :~ Int: dest - start
+
+  method less(other :: MapEntry) :~ Boolean:
+    start < other.start
+
+  method split(span :: Span) :: values(List.of(Span), Span || False):
+    cond
+    | (span.start < start && span.end < start)
+        || (span.start >= start && span.end <= end):
+          values([span], #false)
+    | span.start < start:
+        def span1 = Span(span.start, start - 1)
+        def span2 = Span(start, span.end)
+        def values(more_spans, remainder_span) = split(span2)
+        values(List.cons(span1, more_spans), remainder_span)
+    | span.start <= end:
+        def span1 = Span(span.start, end)
+        def span2 = Span(end + 1, span.end)
+        values([span1], span2)
+    | span.start > end:
+        values([], span)
+
+  // lookup only deals with spans that are equal or inside
+  method lookup(span :: Span) :: Span || False:
+    cond
+    | span.start >= start && span.end <= end:
+        span.add_delta(delta)
+    | ~else: #false
+
+fun MapEntry.from_parse(~src: src :: NonnegInt,
+                        ~dest: dest :: NonnegInt,
+                        ~length: length :: PosInt) :: MapEntry:
+  MapEntry(src, src + length - 1, dest)
+
+check:
+  // before
+  MapEntry(5, 100, 5).split(Span(0, 4)) ~is:
+    values([Span(0, 4)], #false)
+  // left crossing
+  MapEntry(5, 10, 100).split(Span(0, 7)) ~is:
+    values([Span(0, 4), Span(5, 7)], #false)
+  // inside
+  MapEntry(5, 10, 100).split(Span(6, 9)) ~is:
+    values([Span(6, 9)], #false)
+  // equal
+  MapEntry(5, 10, 100).split(Span(5, 10)) ~is:
+    values([Span(5, 10)], #false)
+  // after
+  MapEntry(5, 10, 100).split(Span(11, 20)) ~is:
+    values([], Span(11, 20))
+  // right crossing
+  MapEntry(5, 10, 100).split(Span(9, 20)) ~is:
+    values([Span(9, 10)], Span(11, 20))
+  // around
+  MapEntry(5, 10, 100).split(Span(0, 20)) ~is:
+    values([Span(0, 4), Span(5, 10)], Span(11, 20))
+  MapEntry(5, 10, 100).lookup(Span(5, 10)) ~is Span(100, 105)
+  MapEntry(5, 10, 100).lookup(Span(7, 10)) ~is Span(102, 105)
+  MapEntry(5, 10, 100).lookup(Span(7, 8)) ~is Span(102, 103)
+  MapEntry(5, 10, 100).lookup(Span(0, 4)) ~is #false
+  MapEntry(5, 10, 100).lookup(Span(11, 20)) ~is #false
+
+class AlmanacMap(entries :: List.of(MapEntry)):
+  constructor (entries :: List.of(MapEntry)):
+    let entries = entries.sort(MapEntry.less)
+    super(entries)
+
+  method split_all(spans :: List.of(Span)) :: List.of(Span):
+    fun do_splits(spans :: List.of(Span),
+                  entries :: List.of(MapEntry)) :: List.of(Span):
+      cond
+      | spans == []: []
+      | entries == []: spans
+      | ~else:
+          def span = spans[0]
+          def entry = entries[0]
+          cond
+          | span.start > entry.end:
+              do_splits(spans, entries.rest)
+          | ~else:
+              def values(pending, remainder):
+                entry.split(span)
+              let spans:
+                if remainder
+                | List.cons(remainder, spans.rest)
+                | spans.rest
+              match pending
+              | []: do_splits(spans, entries.rest)
+              | [a]: List.cons(a, do_splits(spans, entries))
+              | [a, b]:
+                  List.cons(a,
+                            do_splits(List.cons(b, spans),
+                                      entries))
+    do_splits(spans, entries)
+
+
+  method lookup(spans :: List.of(Span)) :: List.of(Span):
+    fun do_lookup(spans :: List.of(Span), entries :: List.of(MapEntry)):
+      cond
+      | spans == []: []
+      | entries == []: spans
+      | ~else:
+          def span = spans[0]
+          def entry = entries[0]
+          cond
+          | span.end < entry.start:
+              List.cons(span, do_lookup(spans.rest, entries))
+          | span.end <= entry.end:
+              List.cons(entry.lookup(span), do_lookup(spans.rest, entries))
+          | span.start > entry.end:
+              do_lookup(spans, entries.rest)
+    do_lookup(spans, entries)
+
+def map_name_order:
+  ["seed", "soil", "fertilizer", "water",
+   "light", "temperature", "humidity", "location"]
+
+def map_order:
+  for List:
+    each:
+      src: map_name_order
+      dest: map_name_order.rest
+    [src, dest]
+
+class Almanac(seeds :: List.of(Span),
+              maps :: Map.of(List.of(String), AlmanacMap)):
+  method find_min_location():
+    def spans :~ List.of(Span):
+      for values(spans = seeds):
+        each map_name: map_order
+        def this_map = maps[map_name]
+        let spans = this_map.split_all(spans)
+        this_map.lookup(spans).sort(Span.less)
+    spans[0].start
+
+fun Almanac.from_parse(seeds :: List.of(Span),
+                       maps :: List) :: Almanac:
+  let maps:
+    for Map:
+      each [src, dest, entries :: AlmanacMap]: maps
+      values([src, dest], entries)
+  let seeds = seeds.sort(Span.less)
+  Almanac(seeds, maps)
+
+def integer_list_p:
+  p.many1(p.try(p.parse_sequence:
+                  p.spaces
+                  p.integer))
+
+def name_p:
+  p.parse_sequence:
+    cs = p.many1(p.satisfy(Char.is_alphabetic))
+    p.pure((base.#{list->string}(cs) :~ ReadableString).to_string())
+
+def initial_seeds1_p:
+  p.parse_sequence:
+    p.string("seeds:")
+    seeds = integer_list_p
+    p.pure(for List:
+             each s: seeds :~ List
+             Span.from_parse(~start: s))
+
+def initial_seeds2_p:
+  p.parse_sequence:
+    p.string("seeds:")
+    seeds = integer_list_p
+    p.pure(block:
+             let seeds :~ List: seeds
+             for List:
+               each i: 0..((seeds :~ List).length() / 2)
+               Span.from_parse(~start: seeds[i * 2],
+                               ~length: seeds[i * 2 + 1]))
+
+def mapping_entry_p:
+  p.parse_sequence:
+    p.spaces
+    dest = p.integer
+    p.spaces
+    src = p.integer
+    p.spaces
+    length = p.integer
+    p.pure(MapEntry.from_parse(~src: src, ~dest: dest, ~length: length))
+
+def map_p:
+  p.parse_sequence:
+    p.spaces
+    src = name_p
+    p.string("-to-")
+    dest = name_p
+    p.string(" map:")
+    mapping_entries = p.many1(p.try(mapping_entry_p))
+    p.pure([src, dest, AlmanacMap(mapping_entries)])
+
+fun seed_maps_p(seeds_p):
+  p.parse_sequence:
+    seeds = seeds_p
+    maps = p.many1(p.try(map_p))
+    p.choice(p.try(p.spaces), p.pure(#true))
+    p.pure(Almanac.from_parse(seeds, maps))
+
+fun run1(input):
+  def values(config :~ Almanac, []):
+    p.parse(seed_maps_p(initial_seeds1_p), p.string_to_list(input))
+  config.find_min_location()
+
+check:
+  run1(test_input) ~is 35
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 5))
+
+fun run2(input):
+  def values(config :~ Almanac, []):
+    p.parse(seed_maps_p(initial_seeds2_p), p.string_to_list(input))
+  config.find_min_location()
+
+check:
+  run2(test_input) ~is 46
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 5))

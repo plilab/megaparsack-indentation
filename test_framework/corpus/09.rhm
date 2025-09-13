@@ -1,0 +1,99 @@
+#lang rhombus/static
+
+import:
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+  "util/parsec.rhm" as p
+
+@util.example_input(test_input){
+0 3 6 9 12 15
+1 3 6 10 15 21
+10 13 16 21 30 45@("\n")
+}
+
+def spaces_p:
+  p.many1(p.try(p.char(#{#\space})))
+
+def line_p:
+  p.parse_sequence:
+    n = p.integer
+    ns = p.many1(p.try(p.parse_sequence:
+                         spaces_p
+                         p.integer))
+    p.char(#{#\newline})
+    p.pure(List.cons(n, ns))
+
+def input_p:
+  p.many1(line_p)
+
+check:
+  p.parse_string(line_p, "0 3 6 9\n") ~is values([0, 3, 6, 9], [])
+  p.parse_string(input_p, "0 1 2\n0 2 4\n") ~is:
+    values([[0, 1, 2], [0, 2, 4]], [])
+
+fun all_zero(nums :: List.of(Int)) :: Boolean:
+  match nums
+  | []: error("empty list")
+  | [0]: #true
+  | [0, &rest]: all_zero(rest)
+  | _: #false
+
+fun delta(nums :: List.of(Int)) :~ values(List.of(Int), Int):
+  match nums
+  | [a]: values([], a)
+  | Pair(a, Pair(b, _) && rest):
+      let values(rest, last) = delta(rest)
+      values([b - a, &rest], last)
+
+fun next_number(nums :: List.of(Int)):
+  let values(nums, last) = delta(nums)
+  if all_zero(nums)
+  | last
+  | next_number(nums) + last
+
+check:
+  next_number([1, 1]) ~is 1
+  next_number([0, 3, 6, 9, 12, 15]) ~is 18
+  next_number([1, 3, 6, 10, 15, 21]) ~is 28
+  next_number([10, 13, 16, 21, 30, 45]) ~is 68
+  next_number([-1, 0, 2, -6, 27, 94, 10]) ~is -708
+
+fun run1(input):
+  def values(lines :: List.of(List.of(Int)), []):
+    p.parse_string(input_p, input)
+  for values(sum = 0):
+    each line: lines
+    sum + next_number(line)
+
+check:
+  run1(test_input) ~is 114
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 9))
+
+fun prev_number(nums :: List.of(Int)):
+  def first = nums[0]
+  let values(nums, _last) = delta(nums)
+  if all_zero(nums)
+  | first
+  | first - prev_number(nums)
+
+check:
+  prev_number([1, 1]) ~is 1
+  prev_number([0, 3, 6, 9, 12, 15]) ~is -3
+  prev_number([1, 3, 6, 10, 15, 21]) ~is 0
+  prev_number([10, 13, 16, 21, 30, 45]) ~is 5
+
+
+fun run2(input):
+  def values(lines :: List.of(List.of(Int)), []):
+    p.parse_string(input_p, input)
+  for values(sum = 0):
+    each line: lines
+    sum + prev_number(line)
+
+check:
+  run2(test_input) ~is 2
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 9))

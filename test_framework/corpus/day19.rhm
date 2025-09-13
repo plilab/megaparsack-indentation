@@ -1,0 +1,303 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("data/heap.rkt") as heap
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(19)
+
+def test_input:
+  multiline:
+   "px{a<2006:qkq,m>2090:A,rfg}"
+   "pv{a>1716:R,A}"
+   "lnx{m>1548:A,A}"
+   "rfg{s<537:gd,x>2440:R,A}"
+   "qs{s>3448:A,lnx}"
+   "qkq{x<1416:A,crn}"
+   "crn{x>2662:A,R}"
+   "in{s<1351:px,qqz}"
+   "qqz{s>2770:qs,m<1801:hdj,R}"
+   "gd{a>3333:R,R}"
+   "hdj{m>838:A,pv}"
+   ""
+   "{x=787,m=2655,a=1222,s=2876}"
+   "{x=1679,m=44,a=2067,s=496}"
+   "{x=2036,m=264,a=79,s=2244}"
+   "{x=2461,m=1339,a=466,s=291}"
+   "{x=2127,m=1623,a=2188,s=1013}"
+
+class Range(start :: Int, stop :: Int):
+  constructor(low, high):
+    if high < low
+    | error("attempted to create a range between " +& low +& " to " +& high)
+    | super(low, high)
+
+  method count():
+    stop - start
+
+fun split_range(r1 :: Range, r2 :: Range) :: values(Range, List.of(Range)):
+  let overlap_start = math.max(r1.start, r2.start)
+  let overlap_stop = math.min(r1.stop, r2.stop)
+  let non_overlapping:
+    (if overlap_start > r1.start | [Range(r1.start, overlap_start)] | []) ++ \
+    (if overlap_start > r2.start | [Range(r2.start, overlap_start)] | []) ++ \
+    (if overlap_stop < r1.stop | [Range(overlap_stop, r1.stop)] | []) ++ \
+    (if overlap_stop < r2.stop | [Range(overlap_stop, r2.stop)] | [])
+  values(Range(overlap_start, overlap_stop), non_overlapping)
+  
+check:
+  split_range(Range(1,10), Range(5,15))
+  ~is values(Range(5,10), [Range(1,5), Range(10,15)])
+
+check:
+  split_range(Range(5,15), Range(1,10))
+  ~is values(Range(5,10), [Range(1,5), Range(10,15)])
+
+check:
+  split_range(Range(1,10), Range(3,6))
+  ~is values(Range(3,6), [Range(1,3), Range(6,10)])
+
+check:
+  split_range(Range(3,6), Range(1,10))
+  ~is values(Range(3,6), [Range(1,3), Range(6,10)])
+
+
+fun disjoint_ranges(r1 :: Range, r2 :: Range):
+  r1.stop <= r2.start || r2.stop <= r1.start
+
+class State(a :: Range, m :: Range, s :: Range, x :: Range):
+  implements Indexable
+
+  method count():
+    a.count() * m.count() * s.count() * x.count()
+
+  override method get(index):
+    match index
+    | "a": a
+    | "m": m
+    | "s": s
+    | "x": x
+    | ["a", vl]: State(vl, m, s, x)
+    | ["m", vl]: State(a, vl, s, x)
+    | ["s", vl]: State(a, m, vl, x)
+    | ["x", vl]: State(a, m, s, vl)
+
+fun disjoint_states(s1 :: State, s2 :: State):
+  disjoint_ranges(s1.a, s2.a) || \
+  disjoint_ranges(s1.m, s2.m) || \
+  disjoint_ranges(s1.s, s2.s) || \
+  disjoint_ranges(s1.x, s2.x)
+
+fun split_state(s1 :: State, s2 :: State):
+  let values(a_overlap, a_non_overlap) = split_range(s1.a, s2.a)
+  let values(m_overlap, m_non_overlap) = split_range(s1.m, s2.m)
+  let values(s_overlap, s_non_overlap) = split_range(s1.s, s2.s)
+  let values(x_overlap, x_non_overlap) = split_range(s1.x, s2.x)
+  let s_with_a_non_overlap:
+    for List (a : a_non_overlap):
+       each m : List.cons(m_overlap, m_non_overlap)
+       each s : List.cons(s_overlap, s_non_overlap)
+       each x : List.cons(x_overlap, x_non_overlap)
+       State(a, m, s, x)
+  let s_with_m_non_overlap:
+    for List:
+       each m : m_non_overlap
+       each s : List.cons(s_overlap, s_non_overlap)
+       each x : List.cons(x_overlap, x_non_overlap)
+       State(a_overlap, m, s, x)
+  let s_with_s_non_overlap:
+     for List:
+       each s : s_non_overlap
+       each x : List.cons(x_overlap, x_non_overlap)
+       State(a_overlap, m_overlap, s, x)
+  let s_with_x_non_overlap:
+    for List:
+       each x : x_non_overlap
+       State(a_overlap, m_overlap, s_overlap, x)
+  let result:
+     [State(a_overlap, m_overlap, s_overlap, x_overlap)] ++ \
+       (s_with_a_non_overlap) ++ \
+       (s_with_m_non_overlap) ++ \
+       (s_with_s_non_overlap) ++ \
+       (s_with_x_non_overlap)
+  result
+
+class Condition(var :: String, number :: Int):
+  nonfinal
+  abstract method evaluate(map :: Map.of(String, Int)) :: Boolean
+  abstract method evaluate_abstract(state :: State) :: Pair.of(State, State) || False
+
+  constructor (var :: ReadableString, number):
+    super(var.to_string(), String.to_number(number))
+
+class Lt():
+  extends Condition
+  override method evaluate(map):
+    map[var] < number
+  override method evaluate_abstract(map):
+    let var_range = map[var]
+    if var_range.start < number && number <= var_range.stop
+    | Pair(map[[var, Range(var_range.start, number)]], map[[var, Range(number, var_range.stop)]])
+    | #false
+
+class Gt():
+  extends Condition
+  override method evaluate(map):
+    map[var] > number
+  override method evaluate_abstract(map):
+    let var_range = map[var]
+    if var_range.start <= number && number < var_range.stop
+    | Pair(map[[var, Range(number + 1, var_range.stop)]], map[[var, Range(var_range.start, number + 1)]])
+    | #false
+
+
+class Workflow(name :: String, cases :: List.of(Pair.of(Condition, String)), default :: String):
+  method evaluate(map):
+    recur loop(cases = cases):
+      match cases
+      | []: default
+      | List.cons(Pair(cond, result), cases):
+          if cond.evaluate(map)
+          | result
+          | loop(cases)
+
+  method evaluate_abstract(state, states=[]):
+    recur loop(cases = cases, states=states, current_state=state):
+      match cases
+      | []: List.cons(Pair(default, current_state), states)
+      | List.cons(Pair(cond, result), cases):
+          let cond_result = cond.evaluate_abstract(current_state)
+          if !cond_result
+          | loop(cases, states, current_state)
+          | let Pair(matched_state,remain_state) = cond_result
+            loop(cases, List.cons(Pair(result, matched_state), states), remain_state)
+
+
+fun parse_inputs(inputs):
+  for List (input : utils.string.split_lines(inputs)):
+    let input : racket.substring(input, 1, input.length() - 1)
+    for Map (assignment : utils.string.split(input, ",")):
+      let [var :: ReadableString, target]: utils.string.split(assignment, "=")
+      values(var.to_string(), String.to_number(target))
+
+fun parse_workflows(workflows :: ReadableString) :: Map.of(String, Workflow):
+  for Map (workflow : utils.string.split_lines(workflows)):
+    let [name :: ReadableString, contents] = utils.string.split(workflow, "{")
+    let contents = racket.substring(contents, 0, contents.length () - 1)
+    let values(contents, final_value):
+       for values(contents=[], final_value=#false) (operation : utils.string.split(contents, ",")):
+         match utils.string.split(operation, ":")
+         | [fv :: ReadableString]: values(contents, fv.to_string())
+         | [cond_expr, target :: ReadableString]:
+             let cond_expr:
+               cond
+               | racket.#{string-contains?}(cond_expr, "<"):
+                   let [var, number] : utils.string.split(cond_expr, "<")
+                   Lt(var, number)
+               | racket.#{string-contains?}(cond_expr, ">"):
+                   let [var, number] : utils.string.split(cond_expr, ">")
+                   Gt(var, number)
+             let contents: List.cons(Pair(cond_expr, target.to_string()), contents)
+             values(contents, final_value)
+    values(name, Workflow(name, contents.reverse(), final_value))
+
+fun parse_input(raw_input :: ReadableString):
+  let [workflows, inputs] = utils.string.split(raw_input, "\n\n")
+  let workflows = parse_workflows(workflows)
+  let inputs = parse_inputs(inputs)
+  values(workflows, inputs)
+
+fun evaluate(pipeline :: Map.of(String, Workflow), input :: Map.of(String, Number)):
+  recur loop(state="in"):
+    cond
+    | state == "A": #true
+    | state == "R": #false
+    | ~else:
+        loop(pipeline[state].evaluate(input))
+
+fun score(input :: Map.of(String, Number)):
+  input["a"] + input["m"] + input["s"] + input["x"]
+
+fun solve_for_part1(raw_input :: ReadableString):
+  let values(pipeline, inputs) = parse_input(raw_input)
+
+  for values(sum=0) (input : inputs):
+    keep_when evaluate(pipeline, input)
+    sum + score(input)
+
+check:
+  solve_for_part1(test_input)
+  ~is 19114
+
+def result1: solve_for_part1(input)
+
+fun add_to_state_values(state_values, key, state):
+  cond
+  | state_values.has_key(key) && !state_values[key][state]:
+      state_values ++ {key:state_values[key].union(Set(state))}
+  | !state_values.has_key(key): state_values ++ {key: Set(state)}
+  | ~else: state_values
+
+def initial_state = State(Range(1, 4001), Range(1, 4001), Range(1, 4001), Range(1, 4001))
+
+fun evaluate_abstract(pipeline :: Map.of(String, Workflow)):
+  recur loop(state_values=Map{"in": Set{initial_state}}, keys=[Pair("in", initial_state)]):
+    let values(state_values, keys):
+      for values(state_values=state_values, states=[]) (Pair(key, state) : keys):
+        cond
+        | key == "A": values(add_to_state_values(state_values, "A", state), states)
+        | key == "R": values(add_to_state_values(state_values, "R", state), states)
+        | ~else:
+            values(state_values, pipeline[key].evaluate_abstract(state, states))
+    if keys == []
+    | state_values
+    | loop(state_values, keys)
+
+fun Set.remove_all(s :: Set, elts :: List):
+  for values(s = s):
+    each elt: elts
+    s.remove(elt)
+
+fun Set.add_all(s :: Set, elts :: List):
+  let [elt, ...]: elts
+  s.union(Set(elt, ...))
+
+fun simplify_states(states :: Set.of(State)):
+  let values(states_to_remove, states_to_add):
+    for values(states_to_remove=#false, states_to_add=#false):
+      each s1 : states
+      each s2 : states
+      skip_when s1 == s2
+      keep_when !disjoint_states(s1, s2)
+      final_when #true
+      values([s1, s2], split_state(s1, s2))
+  if states_to_remove && states_to_add
+  | simplify_states(Set.add_all(Set.remove_all(states, states_to_remove), states_to_add))
+  | states
+
+fun solve_for_part2(raw_input):
+  let values(pipeline, inputs) = parse_input(raw_input)
+  for values(sum=0) (state : simplify_states(evaluate_abstract(pipeline)["A"])):
+    sum + state.count()
+
+check:
+  solve_for_part2(test_input)
+  ~is 167409079868000

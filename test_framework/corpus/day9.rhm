@@ -1,0 +1,125 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(9)
+
+let test_input:
+  multiline:
+    "0 3 6 9 12 15"
+    "1 3 6 10 15 21"
+    "10 13 16 21 30 45"
+
+fun parse_line(line :: ReadableString) :
+  String.to_number.map(utils.string.split(line, " "))
+
+fun differences(List.cons(hd, ls) :: List.of(Int)):
+  let mutable prev = hd
+  for List:
+    each elt : ls
+    let vl = elt - prev
+    prev := elt
+    vl
+
+fun
+| List.last(List.cons(hd, [])): hd
+| List.last(List.cons(_, tail)): List.last(tail)
+
+fun
+| List.is_empty([]) : #true
+| List.is_empty(List.cons(_, _)) : #false
+
+fun all_equal(ls :: List.of(Int)):
+  let values(_, all_equal):
+    for values(prev_vl=#false, all_equal=#true):
+      each elt : ls
+      break_when !all_equal
+      let prev_vl: prev_vl || elt
+      values(elt, prev_vl == elt)
+  all_equal
+    
+check:
+  all_equal([1,2,3])
+  ~is #false
+check:
+  all_equal([1,1,1])
+  ~is #true
+
+fun parse(raw_input :: ReadableString):
+  parse_line.map(utils.string.split_lines(raw_input))
+
+fun predict_next_element(sequence :: List.of(Int)):
+   let mutable diffs: [sequence]
+   while !all_equal(List.first(diffs)):
+     diffs := List.cons(differences(List.first(diffs)), diffs)
+
+   let List.cons(all_equal, remaining_diffs): diffs
+   let mutable diff : List.first(all_equal)
+   diffs := remaining_diffs
+   while !List.is_empty(diffs):
+     let List.cons(sequence, remaining_diffs): diffs
+     let last_element = List.last(sequence)
+     diff := last_element + diff
+     diffs := remaining_diffs
+   diff
+
+
+fun predict_prev_element(sequence :: List.of(Int)):
+   let mutable diffs: [sequence]
+   while !all_equal(List.first(diffs)):
+     diffs := List.cons(differences(List.first(diffs)), diffs)
+
+   let List.cons(all_equal, remaining_diffs): diffs
+   let mutable diff : List.first(all_equal)
+   diffs := remaining_diffs
+   while !List.is_empty(diffs):
+     let List.cons(sequence, remaining_diffs): diffs
+     let first_element = List.first(sequence)
+     diff := first_element - diff
+     diffs := remaining_diffs
+   diff
+
+
+fun solve_for_part1(raw_input :: ReadableString):
+  let lines: parse(raw_input)
+  for values(sum=0):
+    each line : lines
+    sum + predict_next_element(line)
+
+check:
+  solve_for_part1(test_input)
+  ~is 114
+
+let result1: solve_for_part1(input)
+// aoc_api.submit_result_for_day(9, result1)
+
+fun solve_for_part2(raw_input :: ReadableString):
+  let lines: parse(raw_input)
+  for values(sum=0):
+    each line : lines
+    let prev_element: predict_prev_element(line)
+    sum + prev_element
+
+check:
+  solve_for_part2(test_input)
+  ~is 2
+
+let result2: solve_for_part2(input)
+// aoc_api.submit_result_for_day(9, result2, ~level: 2)
+

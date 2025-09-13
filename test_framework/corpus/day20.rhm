@@ -1,0 +1,264 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("data/heap.rkt") as heap
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+annot.macro 'Pulse' : 'matching(#'low || #'high)'
+
+annot.macro 'Configuration': 'Map.of(String, Pair.of(Module, List.of(String)))'
+
+def input: aoc_api.retrieve_input_for_day(20)
+
+def test_input:
+  multiline:
+    "broadcaster -> a, b, c"
+    "%a -> b"
+    "%b -> c"
+    "%c -> inv"
+    "&inv -> a"
+
+def test_input2:
+  multiline:
+    "broadcaster -> a"
+    "%a -> inv, con"
+    "&inv -> b"
+    "%b -> con"
+    "&con -> output"
+
+class Module():
+  nonfinal
+
+  abstract method process(from :: String, pulse :: Pulse) :: Pair.of(Pulse, Module) || False
+
+class FlipFlop(is_on :: Boolean):
+  extends Module
+  override method process(from :: String, pulse :: Pulse):
+    match pulse
+    | #'high: #false
+    | #'low:
+        if is_on
+        | Pair(#'low, FlipFlop(#false))
+        | Pair(#'high, FlipFlop(#true))
+
+
+class Conjunction(input_memory :: Map.of(String, Pulse)):
+  extends Module
+
+  override method process(from :: String, pulse :: Pulse):
+    let new_input_memory: input_memory ++ Map{from: pulse}
+    let all_high:
+      for values(result=#true) (values(k,v): new_input_memory):
+        break_when !result
+        match v
+        | #'low: #false
+        | #'high: #true
+    if all_high
+    | Pair(#'low, Conjunction(new_input_memory))
+    | Pair(#'high, Conjunction(new_input_memory))
+
+class Broadcast():
+  extends Module
+  override method process(from :: String, pulse :: Pulse):
+    Pair(pulse, Broadcast())
+
+
+fun parse_input(raw_input :: ReadableString) :: Configuration:
+  let component_map : MutableMap{}
+  let output_map : MutableMap{}
+
+  for (line : utils.string.split_lines(raw_input)):
+    let [spec :: ReadableString, targets] = utils.string.split(line, " -> ")
+    let targets = (fun (v :: ReadableString): v.to_string()).map(utils.string.split(targets,", "))
+    cond
+    | spec[0] == #{#\%}:
+        let name :: ReadableString = racket.substring(spec, 1, spec.length())
+        component_map[name.to_string()] := FlipFlop(#false)
+        output_map[name.to_string()] := targets
+    | spec[0] == #{#\&}:
+        let name :: ReadableString = racket.substring(spec, 1, spec.length())
+        component_map[name.to_string()] := Conjunction(Map{})
+        output_map[name.to_string()] := targets
+    | ~else:
+        component_map[spec.to_string()] := Broadcast()
+        output_map[spec.to_string()] := targets
+  
+  for (key : output_map.keys()):
+    each output : output_map[key]
+    when component_map.has_key(output)
+    | match component_map[output]
+      | c :: Conjunction:
+          component_map[output] := Conjunction(c.input_memory ++ Map{key: #'low})
+      | _: #void
+  
+  for Map (key : component_map.keys()):
+    values(key, Pair(component_map[key], output_map[key]))
+
+fun evaluate(queue :: List.of(Pair.of(Pair.of(String, String), Pulse)), configuration :: Configuration):
+  let values(new_queue, new_configuration):
+    for values(new_queue=[], configuration=configuration) \
+              (Pair(Pair(author, target), pulse) : queue):
+        skip_when !configuration.has_key(target)
+        let Pair(module, outputs): configuration[target]
+        let process_result = module.process(author, pulse)
+        if process_result
+        | let Pair(pulse, new_module): process_result
+          let new_pulses:
+             for List (output : outputs):
+               Pair(Pair(target, output), pulse)
+          let new_configuration = configuration ++ {target : Pair(new_module, outputs)}
+          values(new_pulses.reverse() ++ new_queue, new_configuration)
+        | values(new_queue, configuration)
+  values(new_queue.reverse(), new_configuration)
+
+fun fold_over_evaluate(acc, f, queue, config, ~pred: pred = fun(acc, queue, config): queue == []):
+  if pred(acc, queue, config)
+  | values(acc, config)
+  | let acc = f(acc, queue, config)
+    let values(queue, config) = evaluate(queue, config)
+    fold_over_evaluate(acc, f, queue, config, ~pred: pred)
+
+let init_queue = [Pair(Pair("input", "broadcaster"), #'low)]
+
+class SignalCount(no_low :: Int, no_high :: Int):
+
+  // 1 initial no_low for button press
+  constructor
+  | (): super(0, 0)
+  | (low,high): super(low,high)
+
+  method process(ls :: List.of(Pair.of(Pair.of(String, String), Pulse))):
+    for values(acc=this) (Pair(_, pulse) : ls):
+      match pulse
+      | #'low: SignalCount(acc.no_low + 1, acc.no_high)
+      | #'high: SignalCount(acc.no_low, acc.no_high + 1)
+
+
+fun run_cycle(config) :: values(SignalCount, Configuration):
+  fold_over_evaluate(
+    SignalCount(),
+    fun (acc, queue, config): acc.process(queue),
+    init_queue,
+    config,
+  )
+
+fun run_cycle_w_single_rx(config) :: Configuration || False:
+  let mutable rx_found = #false
+  fun check_for_single_rx(acc, queue, config):
+    let rx_targets:
+      for List (Pair(Pair(_, target), pulse) : queue):
+        keep_when target == "rx"
+        pulse
+    match rx_targets
+    | [#'low]: rx_found := #true; #true
+    | _: queue == []
+  let values(_, new_config):
+     fold_over_evaluate(
+       #void,
+       fun (#void, queue, config): #void,
+       init_queue,
+       config,
+       ~pred: check_for_single_rx
+     )
+  if rx_found
+  | #false
+  | new_config
+
+
+fun repeat_and_count(config, ~till: till = 1000):
+  let mutable no_low: 0
+  let mutable no_high: 0
+
+  for values(config=config) (i : 0 .. till):
+    let values(count, config) = run_cycle(config)
+    no_low := no_low + count.no_low
+    no_high := no_high + count.no_high
+    config
+
+  no_low * no_high
+
+fun repeat_till_rx(config):
+  recur loop(config=config, step=1):
+    let new_config = run_cycle_w_single_rx(config)
+    if new_config
+    | loop(new_config, step + 1)
+    | step
+
+
+fun repeat_till_cycle(config):
+  let seen_states: MutableMap{}
+  let signal_counts_at_step: MutableMap{}
+  let values(final_step, loop_back):
+     recur loop(config=config, step=1):
+       let values(signal_count, config): run_cycle(config)
+       if seen_states.has_key(config)
+       | values(step, seen_states[config])
+       | signal_counts_at_step[step] := signal_count
+         seen_states[config] := step
+         loop(config, step + 1)
+  values(
+    loop_back, final_step - loop_back, signal_counts_at_step.snapshot())
+
+fun find_total_in_repeat(config, ~till: till=1000):
+  let values(cycle_start, cycle_len, signal_counts_at_step):
+    repeat_till_cycle(config)
+  let mutable no_low = 0
+  let mutable no_high = 0
+
+  // first handle prefix:
+  for (i : 1 .. cycle_start):
+    no_low := no_low + signal_counts_at_step[i].no_low
+    no_high := no_high + signal_counts_at_step[i].no_high
+      
+  // handle cycles
+  let no_repeats = (till - cycle_start + 1) div cycle_len
+  for (i : cycle_start .. cycle_start + cycle_len):
+    no_low := no_low + signal_counts_at_step[i].no_low * no_repeats
+    no_high := no_high + signal_counts_at_step[i].no_high * no_repeats
+    
+  // handle remaining
+  let remaining = (till - cycle_start + 1) mod cycle_len
+  for (i : cycle_start .. cycle_start + remaining):
+    no_low := no_low + signal_counts_at_step[i].no_low
+    no_high := no_high + signal_counts_at_step[i].no_high
+
+  no_low * no_high
+
+fun solve_for_part1(raw_input :: ReadableString):
+  let config = parse_input(raw_input)
+  repeat_and_count(config, ~till: 1000)
+
+check:
+  solve_for_part1(test_input)
+  ~is 32000000
+check:
+  solve_for_part1(test_input2)
+  ~is 11687500
+
+// solve_for_part1(input)
+
+
+fun solve_for_part2(raw_input :: ReadableString):
+  let config = parse_input(raw_input)
+  repeat_till_rx(config)
+
+
+solve_for_part2(input)

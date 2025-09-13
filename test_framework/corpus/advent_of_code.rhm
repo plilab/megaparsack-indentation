@@ -1,0 +1,16 @@
+#lang rhombus/static
+
+import:
+  lib("advent-of-code/main.rkt") as aoc:
+    rename:
+      #{find-session} as find_session
+      #{fetch-aoc-input} as fetch_input
+
+export:
+  rename:
+    aoc.find_session as find_session
+  fetch_input
+
+fun fetch_input(session, year, day) :~ String:
+  let s :: ReadableString = aoc.fetch_input(session, year, day, ~cache: #true)
+  s.to_string()

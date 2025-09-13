@@ -1,0 +1,215 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(8)
+def test_input:
+  multiline:
+    "RL"
+    ""
+    "AAA = (BBB, CCC)"
+    "BBB = (DDD, EEE)"
+    "CCC = (ZZZ, GGG)"
+    "DDD = (DDD, DDD)"
+    "EEE = (EEE, EEE)"
+    "GGG = (GGG, GGG)"
+    "ZZZ = (ZZZ, ZZZ)"
+
+def test_input2:
+  multiline:
+    "LLR"
+    ""
+    "AAA = (BBB, BBB)"
+    "BBB = (AAA, ZZZ)"
+    "ZZZ = (ZZZ, ZZZ)"
+
+def test_input3:
+  multiline:
+     "LR"
+     ""
+     "11A = (11B, XXX)"
+     "11B = (XXX, 11Z)"
+     "11Z = (11B, XXX)"
+     "22A = (22B, XXX)"
+     "22B = (22C, 22C)"
+     "22C = (22Z, 22Z)"
+     "22Z = (22B, 22B)"
+     "XXX = (XXX, XXX)"
+
+
+class Direction():
+  nonfinal
+
+class Left():
+  extends Direction
+
+class Right():
+  extends Direction
+
+fun parse_instructions(str :: ReadableString) :: List.of(Direction):
+  for List (char: str):
+    match char
+    | #{#\R}: Right()
+    | #{#\L}: Left()
+
+check:
+  parse_instructions("RL")
+  ~is [Right(), Left()]
+
+check:
+  parse_instructions("LLR")
+  ~is [Left(), Left(), Right()]
+
+fun parse_mapping(str :: ReadableString):
+  let [lhs, rhs] = utils.string.trim.map(utils.string.split(str, "="))
+  let rhs = racket.substring(rhs, 1, rhs.length() - 1)
+  let [l,r] = utils.string.trim.map(utils.string.split(rhs, ","))
+  Pair(lhs, Pair(l, r))
+
+check:
+  parse_mapping("AAA = (BBB, CCC)")
+  ~is Pair("AAA", Pair("BBB", "CCC"))
+
+
+fun parse_input(raw_input :: ReadableString):
+  let [instruction_list, _, mapping, ...]: utils.string.split_lines(raw_input)
+  let instructions = parse_instructions(instruction_list)
+  let [Pair(lhs, rhs), ...] = [parse_mapping(mapping), ...]
+  let graph = {lhs : rhs, ...}
+  values(instructions, graph)
+
+fun solve_part1(raw_input :: ReadableString):
+  let values(instructions, graph): parse_input(raw_input)
+
+  let ins_len: instructions.length()
+
+  let mutable count: 0
+  let mutable current: "AAA"
+  while current != "ZZZ":
+    let ind = count mod ins_len
+    let Pair(left, right): graph[current]
+    count := count + 1
+    current := block:
+      match instructions[ind]
+      | Left(): left
+      | Right(): right
+  count 
+
+
+check:
+  solve_part1(test_input)
+  ~is 2
+
+check:
+  solve_part1(test_input2)
+  ~is 6
+
+
+let result1 = solve_part1(input)
+// aoc_api.submit_result_for_day(8, result1)
+
+fun find_start_nodes(map :: Map.of(String, Pair.of(String,String))) :: Array.of(String):
+  for Array (key : map.keys()):
+    skip_when !(racket.#{string-suffix?}(key, "A"))
+    key
+  
+fun are_all_nodes_completed(states :: Array.of(String)):
+  for values(result=#true):
+    each state : states
+    skip_when racket.#{string-suffix?}(state, "Z")
+    break_when !result
+    #false
+
+check:
+  are_all_nodes_completed(Array("AZ", "1Z", "2Z"))
+  ~is #true
+
+check:
+  are_all_nodes_completed(Array("AZ", "1A", "2Z"))
+  ~is #false
+
+fun gcd_inner(a, b): if b == 0 | a | gcd_inner(b, a mod b)
+fun
+| gcd(a,b): gcd_inner(a,b)
+| gcd(a, b, c, ...): gcd(gcd_inner(a,b), c, ...)
+
+fun lcm_inner(a, b): (a / gcd(a,b)) * b
+fun
+| lcm(a,b): lcm_inner(a,b)
+| lcm(a,b, c, ...): lcm(lcm_inner(a,b), c, ...)
+
+fun
+| calculate_lcms(reps :: List.of(Set.of(Int))):
+    match reps
+    | []: #false
+    | List.cons(head, reps):
+        for values(min=#false):
+          each rep: head.to_list()
+          let lcm: calculate_lcms(rep, reps)
+          if !min
+          | lcm
+          | math.min(lcm, min)
+| calculate_lcms(c_lcm, reps):
+    match reps
+    | []: c_lcm
+    | List.cons(head, reps):
+        for values(min=#false):
+          each rep: head.to_list()
+          let lcm: calculate_lcms(lcm(c_lcm, rep), reps)
+          if !min
+          | lcm
+          | math.min(lcm, min)
+
+
+fun solve_part2(raw_input :: ReadableString):
+  let values(instructions, graph): parse_input(raw_input)
+
+  let ins_len: instructions.length()
+
+
+  let current: find_start_nodes(graph)
+  let node_ranges:
+    for List (i : 0 .. current.length()):
+      let mutable current_state: current[i]
+      let mutable count: 0
+      let seen: MutableSet()
+      let mutable complete: MutableSet()
+      let mutable pos_summary: Pair(count mod ins_len, current_state)
+      while !seen[pos_summary]:
+        seen[pos_summary] := #true
+        let ind = count mod ins_len
+        let Pair(left, right): graph[current_state]
+        count := count + 1
+        current_state := block:
+          match instructions[ind]
+          | Left(): left
+          | Right(): right
+        pos_summary := Pair(count mod ins_len, current_state)
+        when racket.#{string-suffix?}(current_state, "Z")
+        | complete[count] := #true
+      complete.snapshot()
+  calculate_lcms(node_ranges)
+
+check:
+  solve_part2(test_input3)
+  ~is 6
+
+
+let result2 = solve_part2(input)
+// aoc_api.submit_result_for_day(8, result2, ~level: 2)
