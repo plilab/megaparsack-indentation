@@ -8,17 +8,16 @@
 (require rackunit)
 (require rhombus/parse)
 (require racket/contract)
-
 (require "examples.rkt")
 
-(provide parse-string
+(provide parse-string-self-defined
          parse-info
          compare-sexps
          extract-sexp-diff
          check-sexps-equal?)
 
 ;;; Racket shrubbery API to parse the program
-(define/contract (parse-string s)
+(define/contract (parse-string-self-defined s)
   (-> string? syntax?)
   (with-handlers ([exn:fail? (lambda (exn) (printf "Parse error: ~a\n" (exn-message exn)))])
     (define in (open-input-string s))
@@ -71,8 +70,8 @@
                         (parse-info-location info))))
 
 ;;; Debugging
-(define sexp1 (syntax->datum (parse-string prog1)))
-(define sexp2 (syntax->datum (parse-string prog1_2)))
+(define sexp1 (syntax->datum (parse-string-self-defined prog1)))
+(define sexp2 (syntax->datum (parse-string-self-defined prog1_2)))
 (define info (compare-sexps sexp1 sexp2 '()))
 (module+ main
   (extract-sexp-diff sexp1 (parse-info-location info)))

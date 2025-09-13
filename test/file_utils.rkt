@@ -1,5 +1,7 @@
 #lang racket
 (require racket/port)
+(require racket/runtime-path)
+
 (provide read-file-into-string
          read-corpus
          corpus_path
@@ -26,7 +28,8 @@
   (-> path? string?)
   (process-file (file->string path)))
 
-(define corpus_path (build-path (current-directory) "corpus"))
+
+(define-runtime-path corpus_path "corpus")
 (define all_paths (read-corpus corpus_path))
 (define local_file (car all_paths))
 (define content (read-file-into-string local_file))
