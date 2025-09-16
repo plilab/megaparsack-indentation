@@ -14,7 +14,10 @@
   operator/p
   number/p
   boolean/p
-  void/p
+  void-literal/p
+  line-continuation/p
+  whitespace/p
+  non-nl-whitespace/p
   string/p)
   ;; string/p
   ;; bytestring/p
@@ -28,6 +31,16 @@
     [rest-chars <- (many/p (or/p letter/p (char/p #\=) digit/p))]
     (pure (list->string (cons starting-char rest-chars)))))
 
+(define whitespace/p
+  (hidden/p (many/p space/p)))
+
+(define non-nl-whitespace/p
+  (hidden/p (many/p (satisfy/p (lambda (x) (and (char-whitespace? x) (not (char=? #\newline x))))))))
+
+
+(define line-continuation/p
+  (string/p "\\\n"))
+
 (define identifier/p
   (do
     [ident <- (or/p
@@ -36,7 +49,7 @@
                  (string/p "#%")
                  [ident <- plainident/p]
                  (pure (format "#%~a" ident))))]
-    (pure (list 'identifier ident))))
+    (pure (string->symbol ident))))
 
 (define keyword/p
   (do
@@ -46,7 +59,9 @@
 
 (define operator/p
   ;; Incomplete
-  (char/p #\+))
+  (do
+    [op <- (string/p "+")]
+    (pure (list 'op (string->symbol op)))))
 
 (define sign/p
   (or/p
