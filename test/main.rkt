@@ -2,8 +2,8 @@
 (require racket/contract)
 (require rackunit)
 (require racket/runtime-path)
-(require "./file_utils.rkt")
-(require "./parse_utils.rkt")
+(require "./utils/file_utils.rkt")
+(require "./utils/parse_utils.rkt")
 (require megaparsack-indentation-shrubbery)
 (require megaparsack)
 (require megaparsack/text)
@@ -33,3 +33,12 @@
                 (check-sexps-equal? (call_self_defined_parser code)
                                     (syntax->datum (parse-string-self-defined code))))
               code_xs)))
+
+;;; Small tests on one example
+(define one_piece_example (
+  read-file-into-string 
+  (string->path "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\corpus\\demo-mini.rhm")
+))
+(display one_piece_example)
+(newline)
+(display (call_self_defined_parser one_piece_example))

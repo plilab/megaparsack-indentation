@@ -8,7 +8,7 @@
 (require rackunit)
 (require rhombus/parse)
 (require racket/contract)
-(require "examples.rkt")
+(require "./examples.rkt")
 
 (provide parse-string-self-defined
          parse-info

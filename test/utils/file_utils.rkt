@@ -29,7 +29,8 @@
   (process-file (file->string path)))
 
 
-(define-runtime-path corpus_path "corpus")
+;;; Debugging
+(define-runtime-path corpus_path "../corpus")
 (define all_paths (read-corpus corpus_path))
 (define local_file (car all_paths))
 (define content (read-file-into-string local_file))

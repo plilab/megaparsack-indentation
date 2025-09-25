@@ -22,7 +22,7 @@ use_static
 #false || !(#false || #false && #true)
 
 // `++` is append on strings
-"hello" ++ " " ++ "world"
+
 
 // `+&` turns things into strings, then appends
 "example: " +& (0 + 1) +& " world "
