@@ -20,7 +20,9 @@
  inf-indentation
  inf-indentation?
  absolute-indentation/p
+ local-absolute-indentation/p
  local-indentation/p
+ local-token-mode/p
  (contract-out
   [struct indentation-state ((lower indentation?) (upper indentation?) (absmode boolean?) (relation relation?))]))
 
@@ -177,6 +179,15 @@
          [child-state <- (indent-parameter)] ; check child interval
          (indent-parameter (restrict-parent-range-from-child-range relation #:parent parent-state #:child child-state)) ; calculate indentation based on previous and this range
          (pure parsed-expression))]))) ; This is the range of the expression
+
+(define (local-absolute-indentation/p parser)
+  (do
+    [(and parent-state (indentation-state _ _ parent-absmode _)) <- (indent-parameter)]
+    (indent-parameter (struct-copy indentation-state parent-state [absmode #t]))
+    [parsed-expression <- parser]
+    [child-state <- (indent-parameter)]
+    (indent-parameter (struct-copy indentation-state child-state [absmode parent-absmode]))
+    (pure parsed-expression)))
 
 (define (absolute-indentation/p parser)
   (do
