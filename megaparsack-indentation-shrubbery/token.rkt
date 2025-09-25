@@ -1,181 +1,183 @@
 #lang racket/base
 
-(require (except-in racket/base do))
-(require data/monad)
-(require data/applicative)
-(require megaparsack)
-(require megaparsack/text)
-(require megaparsack-indentation)
+(require racket/string)
+(require parser-tools/lex)
+(require (prefix-in : parser-tools/lex-sre))
 
 (provide
-  identifier/p
-  plainident/p
-  keyword/p
-  operator/p
-  number/p
-  boolean/p
-  void-literal/p
-  line-continuation/p
-  whitespace/p
-  non-nl-whitespace/p
-  string/p)
-  ;; string/p
-  ;; bytestring/p
-  ;; sexpression/p
-  ;; comment/p
-  ;; at-comment/p)
+  shrubbery-lexer
+  lex-shrubbery)
 
-(define plainident/p
-  (do
-    [starting-char <- (or/p letter/p (char/p #\=))]
-    [rest-chars <- (many/p (or/p letter/p (char/p #\=) digit/p))]
-    (pure (list->string (cons starting-char rest-chars)))))
+(define-tokens basic-tokens (bytestring string plainident identifier keyword number operator boolean void))
+(define-empty-tokens punct-tokens (line-continuation comment colon newline bar))
 
-(define whitespace/p
-  (hidden/p (many/p space/p)))
+(define-lex-abbrevs
+  [plainident (:: (:or alphabetic #\_) (:* (:or alphabetic numeric #\_)))]
 
-(define non-nl-whitespace/p
-  (hidden/p (many/p (satisfy/p (lambda (x) (and (char-whitespace? x) (not (char=? #\newline x))))))))
+  [opchar (:or symbolic punctuation #\: #\|)]
+  [tailopchar (:& opchar (:~ #\:))] ; "not / followed by / or *" covered by `operator` abbreviation
+
+  ;; Defined similarly to https://github.com/racket/rhombus/blob/18ceb067256191783890bbbeb6b65393b2fb43bd/shrubbery-lib/shrubbery/lex.rkt#L139
+  [operator (:- (:: opchar (:* tailopchar))
+                (:or "|" ":" "~")
+                (:: (:* any-char) (:or "//" "/*") (:* any-char)))]
+
+  [decimal (:/ #\0 #\9)]
+  [usdecimal (:or decimal #\_)]
+  [hex (:or decimal (:/ #\a #\f) (:/ #\A #\F))]
+  [ushex (:or hex #\_)]
+  [octal (:/ #\0 #\7)]
+  [usoctal (:or octal #\_)]
+  [bit (:or #\0 #\1)]
+  [usbit (:or bit #\_)]
+
+  [nonneg (:: decimal (:* usdecimal))]
+
+  [sign (:or #\+ #\-)]
+  [exponent (:: (:or #\e #\E) (:? sign) nonneg)]
+
+  [float (:or (:: (:? sign) nonneg #\. (:? nonneg) (:? exponent))
+              (:: (:? sign) #\. nonneg (:? exponent))
+              (:: (:? sign) nonneg exponent)
+              "#inf"
+              "#neginf"
+              "#nan")]
+  [integer (:: (:? sign) nonneg)]
+  [hexinteger (:: (:? sign) "0x" hex (:* ushex))]
+  [octalinteger (:: (:? sign) "0o" octal (:* usoctal))]
+  [binaryinteger (:: (:? sign) "0b" bit (:* usbit))]
+  [fraction (:: integer "/" (:& nonneg (complement "0")))]
+
+  [unicode-escape
+    ;; FIXME Some unicode ranges are invalid if we lex them like this.
+    (:or (:: "\\u" (:** 1 4 hex))
+         (:: "\\U" (:** 1 6 hex)))]
+  [escape
+   (:or "\\a"
+        "\\b"
+        "\\t"
+        "\\n"
+        "\\v"
+        "\\f"
+        "\\r"
+        "\\e"
+        "\\\""
+        "\\\'"
+        "\\\\"
+        (:: "\\" (:** 1 3 octal))
+        (:: "\\x" (:** 1 2 hex)))]
+  [strelem (:or (:~ "\"" "\\" #\newline) escape unicode-escape)]
+  ;; Idea to run range from \x00 to \xFF taken from https://github.com/racket/syntax-color/blob/e1c5ac5115ed3e6c52430390e6bf9b39c8c7e3df/syntax-color-lib/syntax-color/racket-lexer.rkt#L93
+  [bytestrelem (:or (:- (:/ "\x00" "\xff") "\\" "\"") escape)]
 
 
-(define line-continuation/p
-  (string/p "\\\n"))
+  [line-continuation (:: #\\ #\newline)])
 
-(define identifier/p
-  (do
-    [ident <- (or/p
-               plainident/p
-               (do
-                 (string/p "#%")
-                 [ident <- plainident/p]
-                 (pure (format "#%~a" ident))))]
-    (pure (string->symbol ident))))
+(define get-next-comment
+  (lexer
+    ["*/" -1]
+    ["/*" 1]
+    [(eof) eof]
+    ;; TODO Why can't we just put any-char here?
+    [(:or #\/ #\* (:* (:~ #\/ #\*))) (get-next-comment input-port)]
+    ;; Operators can have */ embedded in them. Lexer picks the longest match, with the earlier match as tiebreaker.
+    [operator (get-next-comment input-port)]))
 
-(define keyword/p
-  (do
-    (char/p #\~)
-    [identifier <- plainident/p]
-    (pure (list 'keyword identifier))))
+(define (read-nested-comment num-opens input)
+  (let ([diff (get-next-comment input)])
+    (cond
+      [(eq? eof diff) (error "encountered eof")]
+      [else (let ([next-num-opens (+ diff num-opens)])
+              (cond
+                [(= 0 next-num-opens) (token-comment)]
+                [else (read-nested-comment next-num-opens input)]))])))
 
-(define operator/p
-  ;; Incomplete
-  (do
-    [op <- (string/p "+")]
-    (pure (list 'op (string->symbol op)))))
+(define (remove-underscores str)
+  (string-replace str "_" ""))
 
-(define sign/p
-  (or/p
-    (char/p #\+)
-    (char/p #\-)
-    (void/p)))
 
-(define decimal/p
-  (char-between/p #\0 #\9))
-(define hex/p
-  (or/p (char-between/p #\0 #\9) (char-between/p #\a #\f) (char-between/p #\A #\F)))
-(define octal/p
-  (char-between/p #\0 #\7))
-(define binary/p
-  (one-of/p '(#\0 #\1)))
+(define shrubbery-lexer
+  (lexer-src-pos
+    ;;; Syntax-level grouping operators
+    [":"
+     (token-colon)]
+    ["|"
+     (token-bar)]
 
-(define (digit-string/p digit/p)
-  (do
-    [digit-chunks <- (many+/p
-                       (do
-                         [digits <- (many+/p digit/p)]
-                         (pure (list->string digits)))
-                       #:sep (char/p #\_))]
-    (pure (apply string-append digit-chunks))))
+    ;;; Eof
+    [(eof)
+     eof]
 
-(define exponent/p
-  (do
-    (one-of/p '(#\e #\E))
-    (digit-string/p decimal/p)))
+    ;;; Identifiers
+    [(:or plainident (:: "#%" plainident))
+     (token-identifier (string->symbol lexeme))]
+    [(:: "~" plainident)
+     (token-keyword (string->symbol lexeme))]
 
-;; The number from rhombus is massaged into a form that can be read by string->number
-(define number/p
-  (do
-    [sign <- (do
-               [sign-parse <- sign/p]
-               (pure (cond
-                      [(void? sign-parse) #\+]
-                      [else sign-parse])))]
-    [number-string <-
-      (or/p
-        ;;; Hexadecimal integer
-        (do
-          (string/p "0x")
-          [digits <- (digit-string/p hex/p)]
-          (pure (format "#x~a~a" sign digits)))
-        ;;; Octal integer
-        (do
-          (string/p "0o")
-          [digits <- (digit-string/p octal/p)]
-          (pure (format "#o~a~a" sign digits)))
-        ;;; Binary integer
-        (do
-          (string/p "0b")
-          [digits <- (digit-string/p binary/p)]
-          (pure (format "#b~a~a" sign digits)))
-        ;;; Float with no digits before the "."
-        (do
-          (char/p #\.)
-          [digits <- (digit-string/p decimal/p)]
-          [exponent <- (or/p (exponent/p) (pure "0"))]
-          (pure (format ".~ae~a" digits exponent)))
-        (do
-          ;; This can either be the integer part or the numerator, but I don't know a succint name for both
-          [integer-part <- (digit-string/p decimal/p)]
-          (or/p
-            ;;; Floating point with only an exponent (no "." or fractional part)
-            (do
-              [exponent <- exponent/p]
-              (pure (format "~ae~a" integer-part exponent)))
-            ;;; Floating point with a "." with an optional fractional part and an optional exponent
-            (do
-              (char/p #\.)
-              [fractional-part <- (or/p
-                                    (digit-string/p decimal/p)
-                                    (pure "0"))]
-              [exponent <- (or/p
-                            (exponent/p)
-                            (pure "0"))]
-              (pure (format "~a.~ae~a" integer-part fractional-part exponent)))
-            ;;; Fraction
-            ;; Shrubbery syntax defines that the denominator cannot be zero.
-            ;; Canonical parser parses 1/0 as (group 1 (op /) 0). So we need to only try to parse.
-            ;; Only parsing numbers might give weird errors because of this,
-            ;; but it should not be a problem while parsing an entire program.
-            (try/p (do
-                    (char/p #\/)
-                    [denominator-part <- (guard/p (digit-string/p decimal/p) (lambda (x) (string=? x "0")) "A positive decimal number")]
-                    (pure (format "~a~a/~a" sign integer-part denominator-part))))
-            ;;; Integer
-            (pure integer-part))))]
-    (pure (string->number number-string))))
+    ;;; Line based parsing primitives
+    [line-continuation
+     (token-line-continuation)]
+    [#\newline
+     (token-newline)]
 
-(define boolean/p
-  (or/p
-    (chain (string/p "#true") (pure #t))
-    (chain (string/p "#false") (pure #f))))
+    ;;; Booleans
+    ["#true"
+     (token-boolean #t)]
+    ["#false"
+     (token-boolean #f)]
 
-;; `void/p` is already a function in megaparsack
-(define void-literal/p
-  (chain (string/p "#void") (pure (void))))
+    ;;; Numbers
+    [(:or float integer fraction)
+     (token-number (string->number (remove-underscores lexeme)))]
+    [hexinteger
+     (token-number (string->number (remove-underscores (string-replace lexeme "0x" "" #:all? #f)) 16))]
+    [octalinteger
+     (token-number (string->number (remove-underscores (string-replace lexeme "0o" "" #:all? #f)) 8))]
+    [binaryinteger
+     (token-number (string->number (remove-underscores (string-replace lexeme "0b" "" #:all? #f)) 2))]
 
-;; string/p is already a function in megaparsack
-;; (define string-literal/p
-;;   (error 'string-literal/p "not implemented"))
-;;
-;; (define bytestring/p
-;;   (error 'bytestring/p "not implemented"))
-;;
-;; (define sexpression/p
-;;   (error 'sexpression/p "not implemented"))
-;;
-;; (define comment/p
-;;   (error 'comment/p "not implemented"))
+    ;;; Strings
+    ;; Rhombus says that string can contiain the same characters as racket strings exlcluding whitespace
+    ;; Racket strings referred to from https://docs.racket-lang.org/reference/reader.html#%28part._parse-string%29
+    [(:: #\# #\" (:* bytestrelem) #\")
+     (token-bytestring (read (open-input-string lexeme)))]
+    [(:: #\" (:* strelem) #\")
+     (token-string (read (open-input-string lexeme)))]
 
-;; Only within at-text
-;; (define at-comment/p
-;;   (error 'at-comment/p "not implemented"))
+    ;;; Operator
+    [operator
+     (token-operator (string->symbol lexeme))]
+
+    ;;; Void
+    ["#void"
+     (token-void (void))]
+
+    ;;; Comments
+    [(:: "//" (:* (:~ #\newline)))
+      ;; Call the lexer to ignore the current lexeme
+     (return-without-pos (shrubbery-lexer input-port))]
+    [(:: "#!" (:* (:~ #\newline)) (:* (:: line-continuation (:~ #\newline))))
+     (return-without-pos (shrubbery-lexer input-port))]
+    ["/*"
+     (return-without-pos
+       (begin
+        ;; Idea taken from https://github.com/racket/syntax-color/blob/e1c5ac5115ed3e6c52430390e6bf9b39c8c7e3df/syntax-color-lib/syntax-color/racket-lexer.rkt#L262
+        (read-nested-comment 1 input-port)
+        ;; Instead of returning a comment token, we discard it like in the canonical parser
+        ;; TODO(mashfi) Do we need to know where a multi-line comment is at for any reason?
+        (shrubbery-lexer input-port)))]
+    [(:- whitespace #\newline)
+     (return-without-pos (shrubbery-lexer input-port))]))
+
+(define (lex-shrubbery str)
+  (define in (open-input-string str))
+  (port-count-lines! in)
+  (let loop ([v (shrubbery-lexer in)])
+    (cond [(void? (position-token-token v)) (loop (shrubbery-lexer in))]
+          [(eof-object? (position-token-token v)) '()]
+          [else (cons v (loop (shrubbery-lexer in)))])))
+
+(module+ main
+  (require racket/pretty)
+
+  (pretty-print (lex-shrubbery "=")))
