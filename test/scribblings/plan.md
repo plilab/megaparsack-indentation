@@ -36,3 +36,20 @@ Parse Examples Using Shrubbery
   Bindings Program
 
 2. use `write-shrubbery` to reconstruct the Shrubbery notation string from s-expression back to string
+
+Syntax structure for Shrubbery parsed expression
+
+document ::= (top group*)
+group ::= (group item* item)
+          | (group item* block)
+          | (group item* alts)
+          | (group item* block alts)
+item  ::= atom
+          | (op symbol)
+          | (parens group* )
+          | (brackets group*)
+          | (braces group*)
+          | (quotes group*)
+          <!-- | (parsed ‹any› ‹any›) -->
+block ::= (block group*)
+alts  ::= (alts block*)
