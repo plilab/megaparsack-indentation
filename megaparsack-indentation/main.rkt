@@ -4,7 +4,6 @@
 (require data/either)
 (require data/monad)
 (require megaparsack)
-(require megaparsack/text)
 (require racket/contract)
 (require racket/fixnum)
 (require racket/match)
@@ -224,50 +223,36 @@
 ;;       (pure (syntax-box-datum box)))))
 ;;
 
-(define whitespace/p (many/p space/p))
-
-;; Parens example
-(define bracket-parser
-  ;; TODO What did professor say to add here? Something about the token mode
-  (many/p
-   (do whitespace/p
-     [x <- (or/p
-             (local-token-mode/p (const '=)
-               (do
-                 (indent/p (char/p #\())
-                 whitespace/p
-                 [x <- (local-indentation/p '> (delay/p bracket-parser))]
-                 whitespace/p
-                 (indent/p (char/p #\)))
-                 (pure (list 'parens x))))
-             (local-token-mode/p (const '>=)
-               (do
-                (indent/p (char/p #\[))
-                whitespace/p
-                [x <- (local-indentation/p '> (delay/p bracket-parser))]
-                whitespace/p
-                (indent/p (char/p #\]))
-                (pure (list 'bracket x)))))]
-     whitespace/p
-     (pure x))))
 
 (module+ test
-  ;; Any code in this `test` submodule runs when this file is run using DrRacket
-  ;; or with `raco test`. The code here does not run when this file is
-  ;; required by another module.
+  (require megaparsack/text)
 
-  (check-equal? (+ 2 2) 4))
+  (define whitespace/p (many/p space/p))
 
-(module+ main
-  ;; (printf "~a\n"
-  ;;         (parse-result! (parse-string iswim-expr "x + y")))
-  ;; (printf "~a\n"
-  ;;         (parse-result! (parse-string iswim-expr "x + v where\n x = -(\ny + z) + w")))
-  (printf "~a\n"
-          (parse-result! (parse-string bracket-parser "(  [(\n    ) ]\n)")))
-  ;; (printf "~a\n"
-  ;;         (parse-result! (parse-string bracket-parser "()")))
+  ;; Parens example
+  (define bracket-parser
+    (many/p
+     (do whitespace/p
+       [x <- (or/p
+               (local-token-mode/p (const '=)
+                 (do
+                   (indent/p (char/p #\())
+                   whitespace/p
+                   [x <- (local-indentation/p '> bracket-parser)]
+                   whitespace/p
+                   (indent/p (char/p #\)))
+                   (pure (list 'parens x))))
+               (local-token-mode/p (const '>=)
+                 (do
+                  (indent/p (char/p #\[))
+                  whitespace/p
+                  [x <- (local-indentation/p '> bracket-parser)]
+                  whitespace/p
+                  (indent/p (char/p #\]))
+                  (pure (list 'bracket x)))))]
+       whitespace/p
+       (pure x))))
 
-  (printf "~a\n"
-          (parse-result! (parse-string bracket-parser " (  [(\n     ) \n]\n )"))))
+  (check-equal? (parse-string bracket-parser "(  [(\n    ) ]\n)") (success '((parens ((bracket ((parens ()))))))))
 
+  (check-equal? (parse-string bracket-parser " (  [(\n     ) \n   ]\n )") (success '((parens ((bracket ((parens ())))))))))
