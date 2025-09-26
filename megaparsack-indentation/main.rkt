@@ -133,7 +133,8 @@
     (pure (syntax-box-datum box))))
 
 
-(define (local-token-mode/p relation-transformer parser)
+(define/contract (local-token-mode/p relation-transformer parser)
+  (-> (-> relation? relation?) parser? parser?)
   (do
     [old-state <- (indent-parameter)]
     (define old-relation (indentation-state-relation old-state))
@@ -148,16 +149,16 @@
 (define (set-local-indentation-range relation parent-state)
   (define (local-indentation-child-range relation parent-lower parent-upper)
     (match relation
-      ['* (cons 0 inf-indentation)]
-      ['= (cons parent-lower parent-upper)]
+      ['* (values 0 inf-indentation)]
+      ['= (values parent-lower parent-upper)]
       [(cons 'const x)
        ; TODO Check if allowing infinity breaks things
        (cond
          [(= x inf-indentation)
           (error "local-indentation: Const indentation 'infIndentation' is out of bounds")]
-         [else (cons x x)])]
-      ['>= (cons parent-lower inf-indentation)]
-      ['> (cons (add1 parent-lower) inf-indentation)]))
+         [else (values x x)])]
+      ['>= (values parent-lower inf-indentation)]
+      ['> (values (add1 parent-lower) inf-indentation)]))
   (match-define (indentation-state lower upper _ _) parent-state)
   (match-define (cons child-lower child-upper) (local-indentation-child-range relation lower upper))
   (struct-copy indentation-state parent-state [lower child-lower] [upper child-upper]))
