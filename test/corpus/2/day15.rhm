@@ -1,0 +1,127 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(15)
+def test_input:
+  multiline:
+    "rn=1,cm-,qp=3,cm=2,qp-,pc=4,ot=9,ab=5,pc-,pc=6,ot=7"
+    
+
+fun hash(s :: ReadableString):
+  let mutable current_value = 0
+  for (c : s):
+    current_value := current_value + Char.to_int(c)
+    current_value := current_value * 17
+    current_value := current_value mod 256
+  current_value
+
+check:
+  hash("HASH")
+  ~is 52
+
+fun parse_input(s :: ReadableString):
+  utils.string.split(s, ",")
+
+fun solve_for_part1(s :: ReadableString):
+  for values(sum = 0):
+    each instr : parse_input(s)
+    sum + hash(instr)
+
+check:
+  solve_for_part1(test_input)
+  ~is 1320
+
+def result1: solve_for_part1(input)
+
+// aoc_api.submit_result_for_day(15, result1)
+
+fun
+| update_assoc(label, vl, []): error("key " +& label +& " does not exist")
+| update_assoc(label, vl, List.cons([olabel, ovl], rest)):
+    if racket.#{equal?}(label, olabel)
+    | List.cons([olabel, vl], rest)
+    | List.cons([olabel, ovl], update_assoc(label, vl, rest))
+
+fun
+| remove_assoc(label, []): error("key " +& label +& " does not exist")
+| remove_assoc(label, List.cons([olabel, ovl], rest)):
+    if racket.#{equal?}(label, olabel)
+    | rest
+    | List.cons([olabel, ovl], remove_assoc(label, rest))
+
+class BoxList(box_contents_set :: Array.of(MutableSet), box_contents :: Array.of(List.of(List))):
+
+  constructor():
+    def box_contents_set = Array.make(256, #false)
+    def box_contents = Array.make(256, #false)
+    for (i : 0 .. 256):
+      box_contents_set[i] := MutableSet()
+      box_contents[i] := []
+    super(box_contents_set, box_contents)
+
+  method add_label(label, vl):
+    let ind = hash(label)
+    if box_contents_set[ind][label]
+    | box_contents[ind] := update_assoc(label, vl, box_contents[ind])
+    | box_contents_set[ind][label] := #true
+      box_contents[ind] := List.cons([label, vl], box_contents[ind])
+
+  method remove_label(label):
+    let ind = hash(label)
+    when box_contents_set[ind][label]
+    | box_contents_set[ind][label] := #false
+      box_contents[ind] := remove_assoc(label, box_contents[ind])
+
+  method score():
+    for values(sum=0) (i : 0 .. 256):
+      skip_when box_contents_set[i].length() == 0
+      sum + (i + 1) * \
+            for values(result=0):
+              each:
+                [_, elt] : (box_contents[i].reverse())
+                i : 1 ..
+              result + elt * i
+
+fun handle_instruction(boxes :: BoxList, line :: ReadableString):
+  cond
+  | racket.#{string-contains?}(line, "="):
+      let [label, vl] = utils.string.split(line, "=")
+      boxes.add_label(label, String.to_number(vl))
+  | racket.#{string-contains?}(line, "-"):
+      let [label] = utils.string.split(line, "-")
+      boxes.remove_label(label)
+
+fun solve_for_part2(raw_input :: ReadableString):
+  def data = parse_input(raw_input)
+  def boxes = BoxList()
+  for (ins : data):
+    handle_instruction(boxes, ins)
+  boxes.score()
+
+check:
+  solve_for_part2(test_input)
+  ~is 145
+
+def result2 = solve_for_part2(input)
+result2
+

@@ -1,0 +1,53 @@
+#lang rhombus/static/and_meta
+
+import:
+  lib("racket/base.rkt"):
+    rename:
+      #{in-lines} as in_lines
+      #{in-string} as in_string
+  lib("racket/port.rkt")
+  lib("racket/sequence.rkt"):
+    rename:
+      #{sequence-map} as map
+
+export:
+  call_with_input_string
+  example_input
+
+  fmt
+  in_lines
+  in_string
+  list_to_string
+  string_index
+
+expr.macro 'call_with_input_string $s:
+              $body':
+  'port.#{call-with-input-string}($s, $body)'
+
+defn.macro 'example_input($(name :: Identifier), [$s, ...])':
+  'def $name: String.append($s, ...)'
+
+fun fmt(vs :: List):
+  def ss:
+    for List:
+      each v: vs
+      to_string(v)
+  String.append(& ss)
+
+fun in_lines(inp :: Port.Input) :~ Sequence:
+  sequence.map(fun (s :~ ReadableString): s.to_string(), base.in_lines(inp))
+
+fun in_string(s :: String) :~ Sequence:
+  base.in_string(s)
+
+fun list_to_string(cs :: List.of(Char)):
+  (base.#{list->string}(cs) :~ ReadableString).to_string()
+
+fun string_index(string :: String, char :: Char) :: NonnegInt || False:
+  def i:
+    for values(w = #false):
+      each j: 0..string.length()
+      def s_char = string[j]
+      final_when s_char == char
+      j
+  i && string[i] == char && i

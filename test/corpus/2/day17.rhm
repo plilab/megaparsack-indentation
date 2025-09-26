@@ -1,0 +1,200 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("data/heap.rkt") as heap
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(17)
+
+def test_input:
+  multiline:
+   "2413432311323"
+   "3215453535623"
+   "3255245654254"
+   "3446585845452"
+   "4546657867536"
+   "1438598798454"
+   "4457876987766"
+   "3637877979653"
+   "4654967986887"
+   "4564679986453"
+   "1224686865563"
+   "2546548887735"
+   "4322674655533"
+
+annot.macro 'Matrix': 'Array.of(Array.of(Int))'
+annot.macro 'Direction': 'matching(#'north||#'south||#'west||#'east)'
+
+fun parse_input(raw_input :: ReadableString) :: Matrix:
+  for Array (line : utils.string.split_lines(raw_input)):
+    for Array (char : line):
+      String.to_number("" +& char)
+
+
+class Grid(data :: Matrix, WIDTH :: Int, HEIGHT :: Int):
+  constructor (data :: Matrix):
+    super(data, data[0].length(), data.length())
+
+fun direction_to_delta(direction :: Direction) :: utils.Point:
+   match direction
+   | #'north: // ^
+        utils.Point(0, -1)
+   | #'south: // V
+        utils.Point(0, 1)
+   | #'east: // >
+        utils.Point(1, 0)
+   | #'west: // <
+        utils.Point(-1, 0)
+
+annot.macro 'Delta': 'converting(fun (dir :: Direction) :: utils.Point: direction_to_delta(dir))'
+
+fun turning_directions(direction :: Direction):
+  match direction
+  | #'north: // ^
+      [#'west, #'east]
+  | #'east:  // ->
+      [#'north, #'south]
+  | #'south: // V
+      [#'east, #'west]
+  | #'west: // <-
+      [#'south, #'north]
+
+class State(
+    WIDTH :: Int, HEIGHT :: Int,
+    position :: utils.Point,
+    direction :: Direction,
+    steps :: Int,
+  ):
+
+ method valid_point():
+   0 <= position.x && position.x < WIDTH && \
+   0 <= position.y && position.y < HEIGHT
+
+ method steps_in_range(low, high):
+   low < steps && steps <= high
+
+ method neighbours_internal() :: List:
+   let [left_dir, right_dir]: turning_directions(direction)
+   [ State(WIDTH, HEIGHT, position.add(direction :: Delta), direction, steps + 1),
+     State(WIDTH, HEIGHT, position.add(left_dir :: Delta), left_dir, 1),
+     State(WIDTH, HEIGHT, position.add(right_dir :: Delta), right_dir, 1) ]
+
+ method neighbours() :: List:
+   for List (neighbour : neighbours_internal()):
+     skip_when !neighbour.valid_point()
+     skip_when !neighbour.steps_in_range(0, 3)
+     neighbour
+
+ method ultra_neighbours_internal() :: List:
+   let [left_dir, right_dir]: turning_directions(direction)
+   let forward_step = State(WIDTH, HEIGHT, position.add((direction :: Delta)), direction, steps + 1)
+   cond
+   | steps < 4: [forward_step]
+   | 4 <= steps && steps <= 9:
+       [forward_step,
+        State(WIDTH, HEIGHT, position.add(left_dir :: Delta), left_dir, 1),
+        State(WIDTH, HEIGHT, position.add(right_dir :: Delta), right_dir, 1) ]
+   | steps == 10:
+       [State(WIDTH, HEIGHT, position.add(left_dir :: Delta), left_dir, 1),
+        State(WIDTH, HEIGHT, position.add(right_dir :: Delta), right_dir, 1)]
+
+ method ultra_neighbours() :: List:
+   for List (neighbour : ultra_neighbours_internal()):
+     skip_when !neighbour.valid_point()
+     skip_when !neighbour.steps_in_range(0, 10)
+     neighbour
+
+fun distance (x1, y1, x2, y2):
+  let dx = x2 - x1
+  let dy = y2 - y1
+  math.sqrt(dx * dx + dy * dy)
+
+fun solve(grid :: Grid):
+  let initial_point = State(grid.WIDTH, grid.HEIGHT, utils.Point(0, 0), #'east, 1)
+  let mutable queue: [initial_point]
+  let heat_loss : MutableMap{initial_point: 0}
+  let node_cost : MutableMap{}
+  let mutable target_point_found = #false
+
+  // a* algorithm
+  fun cost_of_node(state :: State):
+    if node_cost.has_key(state)
+    | node_cost[state]
+    | let cost =  - heat_loss[state] - distance(grid.WIDTH - 1, grid.HEIGHT - 1, state.position.x, state.position.y)
+      node_cost[state] := cost
+      cost
+
+  while !target_point_found:
+    let [state, next, ...]: queue
+    queue := [next, ...]
+    let state_heat_loss = heat_loss[state]
+
+    for (neighbour: state.neighbours()):
+      let neighbour_cost = state_heat_loss + grid.data[neighbour.position.y][neighbour.position.x]
+      cond
+      | (heat_loss.has_key(neighbour) && heat_loss[neighbour] > neighbour_cost) || !heat_loss.has_key(neighbour):
+          heat_loss[neighbour] := neighbour_cost
+          queue := utils.list.insert_into_sorted(neighbour, queue, ~key: cost_of_node)
+      | ~else:
+          #void
+      when neighbour.position.x == grid.WIDTH - 1 && neighbour.position.y == grid.HEIGHT - 1
+      | target_point_found := neighbour
+
+  heat_loss[target_point_found]
+
+fun solve_for_part1(raw_input :: ReadableString):
+  let grid = Grid(parse_input(raw_input))
+  solve(grid)
+
+check:
+  solve_for_part1(test_input)
+  ~is 102
+
+fun ultra_solve(grid :: Grid, ~start_dir: start_dir=#'east):
+  let initial_point = State(grid.WIDTH, grid.HEIGHT, utils.Point(0, 0), start_dir, 1)
+  let heat_loss : MutableMap{initial_point: 0}
+
+  let queue: heap.#{make-heap}(fun (x, y): x[0] <= y[0])
+  heap.#{heap-add!}(queue, [0, initial_point])
+
+  recur loop():
+    let [_, state] = heap.#{heap-min}(queue)
+    heap.#{heap-remove-min!}(queue)
+
+    cond
+    | state.position.x == grid.WIDTH - 1 && state.position.y == grid.HEIGHT - 1 && state.steps >= 4:
+        heat_loss[state]
+    | ~else:
+        let state_heat_loss = heat_loss[state]
+        let neighbours = state.ultra_neighbours()
+        for (neighbour: neighbours):
+          let neighbour_cost = state_heat_loss + grid.data[neighbour.position.y][neighbour.position.x]
+          when !heat_loss.has_key(neighbour) || neighbour_cost < heat_loss[neighbour]
+          | heat_loss[neighbour] := neighbour_cost
+            heap.#{heap-add!}(queue, [neighbour_cost, neighbour])
+        loop()
+
+fun solve_for_part2(raw_input :: ReadableString):
+  let grid = Grid(parse_input(raw_input))
+  math.min(ultra_solve(grid), ultra_solve(grid, #'east))
+
+solve_for_part2(input)
+

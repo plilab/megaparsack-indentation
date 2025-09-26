@@ -1,0 +1,216 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(13)
+
+def test_input:
+  multiline:
+    "#.##..##."
+    "..#.##.#."
+    "##......#"
+    "##......#"
+    "..#.##.#."
+    "..##..##."
+    "#.#.##.#."
+    ""
+    "#...##..#" // 0
+    "#....#..#" // 1
+    "..##..###" // 2
+    "#####.##." // 3
+    "#####.##." // 4
+    "..##..###" // 5
+    "#....#..#" // 6
+
+defn.macro 'fun_cached $(f :: Identifier)($this, $arg, ...) using cache $(cache):
+               $body
+               ...':
+  let f_inner = syntax.#{format-id}('here', "~a_inner", f)
+  let f_cache = syntax.#{format-id}('here', "~a_cache", f)
+  'block:
+     fun $f_inner($this, $arg, ...):
+       $body
+       ...
+
+     fun $f($this, $arg, ...):
+       let $f_cache: $cache
+       let elt = [$arg, ...]
+       if $(f_cache).has_key(elt)
+       | $(f_cache)[elt]
+       | let result = $f_inner($this, $arg, ...)
+         $(f_cache)[elt] := result
+         result
+     $f'
+
+fun smudge_equal(s1, s2, ~equal: equal = fun (a,b): a == b):
+  for values(no_different=0):
+    each:
+      s1_elt : s1
+      s2_elt : s2
+    break_when no_different > 1
+    if !equal(s1_elt, s2_elt)
+    | no_different + 1
+    | no_different
+
+class Pattern(s :: List.of(ReadableString), col_cache, row_cache, col_smudge_cache, row_smudge_cache):
+
+  constructor(s :: ReadableString):
+    super(utils.string.split_lines(s), MutableMap(), MutableMap(), MutableMap(), MutableMap())
+
+  method rows(): s.length()
+  method cols(): s[0].length()
+
+  field column_smudge_equal:
+    fun_cached column_equal(this,i,j) using cache (this.col_smudge_cache):
+       for values(no_diff=0) (line : this.s):
+         skip_when line[i] == line[j]
+         break_when no_diff > 1
+         if line[i] != line[j]
+         | no_diff + 1
+         | no_diff
+
+  field column_equal:
+    fun_cached column_equal(this,i,j) using cache (this.col_cache):
+       for values(result=#true) (line : this.s):
+         skip_when line[i] == line[j]
+         break_when !result
+         line[i] == line[j]
+
+  field row_smudge_equal:
+    fun_cached row_equal(this,i,j) using cache (this.row_smudge_cache):
+      smudge_equal(this.s[i], this.s[j])
+
+  field row_equal:
+    fun_cached row_equal(this,i,j) using cache (this.row_cache):
+      racket.#{equal?}(this.s[i], this.s[j])
+
+  method is_reflected_smudged_row(row :: Int):
+    let init_offset = math.min(rows() - 1 - row - 1, row)
+    let no_diff:
+      recur is_reflected(offset = init_offset, no_diff=0):
+        cond
+        | no_diff > 1: no_diff
+        | offset == 0: no_diff + row_smudge_equal(this, row, row + 1)
+        | ~else:
+            let smudge_diff = row_smudge_equal(this, row - offset, row + 1 + offset)
+            is_reflected(offset - 1, no_diff + smudge_diff)
+    if no_diff == 1
+    | #true
+    | #false
+
+  method is_reflected_row(row :: Int):
+    let init_offset = math.min(rows() - 1 - row - 1, row)
+    recur is_reflected(offset = init_offset):
+      cond
+      | offset == 0: row_equal(this, row, row + 1)
+      | row_equal(this, row - offset, row + 1 + offset): is_reflected(offset - 1)
+      | ~else: #false
+
+  method is_reflected_smudged_col(col :: Int):
+    let init_offset = math.min(cols() - 1 - col - 1, col)
+    let no_diff:
+       recur is_reflected(offset = init_offset, no_diff = 0):
+         cond
+         | no_diff > 1: no_diff
+         | offset == 0: no_diff + column_smudge_equal(this,col, col + 1)
+         | ~else:
+             let smudge_diff = column_smudge_equal(this, col - offset, col + 1 + offset)
+             is_reflected(offset - 1, no_diff + smudge_diff)
+    if no_diff == 1
+    | #true
+    | #false
+
+  method is_reflected_col(col :: Int):
+    let init_offset = math.min(cols() - 1 - col - 1, col)
+    recur is_reflected(offset = init_offset):
+      cond
+      | offset == 0: column_equal(this,col, col + 1)
+      | column_equal(this, col - offset, col + 1 + offset): is_reflected(offset - 1)
+      | ~else: #false
+
+  method find_smudged_rows():
+    for List (row : 0 .. rows() - 1):
+      keep_when is_reflected_smudged_row(row)
+      final_when is_reflected_smudged_row(row)
+      row + 1
+
+  method find_reflected_rows():
+    for List (row : 0 .. rows() - 1):
+      keep_when is_reflected_row(row)
+      row + 1
+
+  method find_smudged_cols():
+    for List (col : 0 .. cols() - 1):
+      keep_when is_reflected_smudged_col(col)
+      final_when is_reflected_smudged_col(col)
+      col + 1
+      
+  method find_reflected_cols():
+    for List (col : 0 .. cols() - 1):
+      keep_when is_reflected_col(col)
+      col + 1
+
+  method summarise_cols():
+    (for values(sum=0) (col: find_reflected_cols()):
+       sum + col)
+  method summarise_rows():
+    (for values(sum=0) (row: find_reflected_rows()):
+       sum + row * 100)
+
+  method summarise():
+    summarise_cols() + summarise_rows()
+
+  method summarise_smudged_cols():
+    (for values(sum=0) (col: find_smudged_cols()):
+       sum + col)
+  method summarise_smudged_rows():
+    (for values(sum=0) (row: find_smudged_rows()):
+       sum + row * 100)
+
+  method summarise_smudged():
+    summarise_smudged_cols() + summarise_smudged_rows()
+
+
+fun parse_input(raw_input :: ReadableString):
+  let [pat, ...]: utils.string.split(raw_input, "\n\n")
+  [Pattern(pat), ...]
+
+fun solve_for_part1(raw_input):
+  def [pat, ...]: parse_input(raw_input)
+  math.sum(pat.summarise(), ...)
+
+check:
+  solve_for_part1(test_input)
+  ~is 405
+
+def result1: solve_for_part1(input)
+// result1
+
+fun solve_for_part2(raw_input):
+  def [pat, ...]: parse_input(raw_input)
+  math.sum(pat.summarise_smudged(), ...)
+
+check:
+  solve_for_part2(test_input)
+  ~is 400
+
+solve_for_part2(input)

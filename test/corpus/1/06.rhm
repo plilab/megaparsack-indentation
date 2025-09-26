@@ -1,0 +1,41 @@
+#lang rhombus/static
+
+fun calculate_first(max_time, min_distance):
+  for values(n = 0):
+    each i: 1..max_time
+    def remaining_time = max_time - i
+    def distance = remaining_time * i
+    break_when distance > min_distance
+    i
+
+fun calculate_last(max_time, min_distance):
+  for values(n = 0):
+    each i: 1..max_time
+    def remaining_time = i
+    def distance = remaining_time * (max_time - i)
+    break_when distance > min_distance
+    i
+
+fun calculate_choices(max_time, min_distance):
+  def losing:
+    calculate_first(max_time, min_distance)
+      + calculate_last(max_time, min_distance)
+  max_time - 1 - losing
+
+check:
+  calculate_choices(7, 9) ~is 4
+  calculate_choices(15, 40) ~is 8
+  calculate_choices(30, 200) ~is 9
+
+// easy enough to just plug the numbers in here
+module part1:
+  calculate_choices(46, 208)
+    * calculate_choices(85, 1412)
+    * calculate_choices(75, 1257)
+    * calculate_choices(82, 1410)
+
+check:
+  calculate_choices(71530, 940200) ~is 71503
+
+module part2:
+  calculate_choices(46857582, 208141212571410)

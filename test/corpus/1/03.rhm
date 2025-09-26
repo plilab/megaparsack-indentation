@@ -1,0 +1,168 @@
+#lang rhombus/static
+
+import:
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+
+@util.example_input(test_input){
+467..114..
+...*......
+..35..633.
+......#...
+617*......
+.....+.58.
+..592.....
+......755.
+...$.*....
+.664.598..
+}
+
+class Posn(x :: Int, y :: Int):
+  method neighbors_8() :~ List.of(Posn):
+    for List:
+      each dx: -1..2
+      each dy: -1..2
+      skip_when dx == 0 && dy == 0
+      Posn(dx + x, dy + y)
+
+  method neighbors_we() :~ List.of(Posn):
+    for List:
+      each dx: -1..2
+      Posn(dx + x, y)
+
+def ZERO = Char.to_int(#{#\0})
+
+class Span(row :: Int, start :: Int, end :: Int):
+  constructor (schematic :: Schematic, posn :: Posn):
+    let row = posn.y
+    fun grow(start :: Int, end :: Int):
+      let l = Char.is_numeric(schematic.ref(Posn(start - 1, row)))
+      let r = Char.is_numeric(schematic.ref(Posn(end + 1, row)))
+      cond
+      | l && r:
+          grow(start - 1, end + 1)
+      | l:
+          grow(start - 1, end)
+      | r:
+          grow(start, end + 1)
+      | ~else:
+          values(start, end)
+    let values(start, end) = grow(posn.x, posn.x)
+    super(row, start, end)
+
+  method to_number(schematic :: Schematic) :: NonnegInt:
+    for values(n = 0):
+      each i: start..end+1
+      n * 10 + Char.to_int(schematic.ref(Posn(i, row))) - ZERO
+
+def NEWLINE = #{#\newline}
+
+class Schematic(grid :: Map.of(Posn, Char),
+                parts :: Set.of(Posn)):
+
+  export from_string
+  fun from_string(schematic_desc :: String):
+    let values(_col, _row, grid, parts):
+      for values(col=0, row=0, grid={}, parts=Set()):
+        each ch: util.in_string(schematic_desc)
+        let values(c, r):
+          if ch == NEWLINE
+          | values(0, row + 1)
+          | values(col + 1, row)
+        let values(grid, parts):
+          if ch == NEWLINE || ch == #{#\.}
+          | values(grid, parts)
+          | let p = Posn(col, row)
+            let grid = grid ++ { p: ch }
+            if Char.is_numeric(ch)
+            | values(grid, parts)
+            | values(grid, parts ++ { p })
+        values(c, r, grid, parts)
+    Schematic(grid, parts)
+
+  method ref(p :: Posn) :: Char:
+    grid.get(p, #{#\.})
+
+  method find_seeds() :~ Set.of(Posn):
+    for Set:
+      each posn: parts
+      each n: posn.neighbors_8()
+      def c: ref(n)
+      keep_when Char.is_numeric(c)
+      n
+
+  method find_part_numbers() :~ List.of(NonnegInt):
+    let spans:
+      for Set:
+        each p: find_seeds()
+        Span(this, p)
+    for List:
+      each s :~ Span: spans
+      s.to_number(this)
+
+check:
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(0,0)) ~is #{#\4}
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(1,0)) ~is #{#\6}
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(7,0)) ~is #{#\4}
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(9,0)) ~is #{#\.}
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(0,1)) ~is #{#\.}
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(3,1)) ~is #{#\*}
+  (Schematic.from_string(test_input) :~ Schematic).ref(Posn(0,4)) ~is #{#\6}
+
+check:
+  def schematic :: Schematic = Schematic.from_string(test_input)
+  def s = Span(schematic, Posn(2, 0))
+  [s.row, s.start, s.end]
+  ~is:
+    [0, 0, 2]
+
+check:
+  def schematic :: Schematic = Schematic.from_string(test_input)
+  def s = Span(schematic, Posn(5, 0))
+  [s.row, s.start, s.end]
+  ~is:
+    [0, 5, 7]
+
+check:
+  def s = Schematic.from_string(test_input)
+  Span(s, Posn(0,0)).to_number(s)
+  ~is 467
+
+fun run1(input :: String) :: NonnegInt:
+  def schematic :: Schematic = Schematic.from_string(input)
+  for values(s = 0):
+    each p: schematic.find_part_numbers()
+    s + p
+
+check:
+  run1(test_input) ~is 4361
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 3))
+
+fun run2(input :: String):
+  def s :: Schematic = Schematic.from_string(input)
+  def gears :~ Set.of(Posn):
+    for Set:
+      each p: s.parts
+      keep_when s.ref(p) == #{#\*}
+      p
+  for values(sum = 0):
+    each gear_p: gears
+    def parts :~ Set.of(Span):
+      for Set:
+        each n: gear_p.neighbors_8()
+        keep_when Char.is_numeric(s.ref(n))
+        Span(s, n)
+    keep_when parts.length() == 2
+    def [part0, part1]:
+      for List:
+        each p: parts
+        p.to_number(s)
+    part0 * part1 + sum
+
+check:
+  run2(test_input) ~is 467835
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 3))

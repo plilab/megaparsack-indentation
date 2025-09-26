@@ -1,0 +1,187 @@
+#lang rhombus/static/and_meta
+
+import:
+  "util/advent_of_code.rhm" as aoc
+  "util/misc.rhm" as util
+  "util/parsec.rhm" as p
+
+@util.example_input(test_input){
+32T3K 765
+T55J5 684
+KK677 28
+KTJJT 220
+QQQJA 483@("\n")
+}
+
+annot.macro 'CompareResult':
+  'matching(#'lesser || #'equal || #'greater)'
+
+interface Comparable:
+  method compare(other) :: CompareResult
+
+  method less(other) :: Boolean:
+    compare(other) == #'lesser
+
+fun compare :: CompareResult
+| compare(a :: Number, b :: Number):
+    cond
+    | a < b: #'lesser
+    | a .= b: #'equal
+    | a > b: #'greater
+| compare(a :: Comparable, b :: Comparable):
+    a.compare(b)
+
+namespace C:
+  export compare
+
+expr.macro
+| 'refine_compare
+   | $compare_expr':
+    '$compare_expr'
+| 'refine_compare
+   | $compare_expr
+   | $compare_rest
+   | ...':
+    'block:
+       def res: $compare_expr
+       if res == #'equal
+       | refine_compare
+         | $compare_rest
+         | ...
+       | res'
+
+expr.macro 'compare_enum ($a, $b):
+              $(vals :: Block)':
+  let [_, &vals] = vals.unwrap()
+  def [vals_n, ...] = List.iota(vals.length())
+  let [vals, ...] = vals
+  'block:
+     fun to_val(v):
+       match v
+       | $vals: $vals_n
+       | ...
+     compare(to_val($a), to_val($b))'
+
+expr.macro 'compare_case $compare_expr
+            | $(lesser_case)
+            | $(equal_case)
+            | $(greater_case)':
+  'match $compare_expr
+   | #'lesser: $lesser_case
+   | #'equal: $equal_case
+   | #'greater: $greater_case'
+
+class Hand(cards :: List.of(PosInt),
+           bid :: PosInt,
+           hand_type :: List.of(PosInt)):
+  implements Comparable
+
+  constructor (cards :: List.of(PosInt), bid :: PosInt):
+    def counts :~ Map:
+      for values(counts = {1: 0}):
+        each c: cards
+        counts ++ { c: counts.get(c, 0) + 1 }
+    let Map{1: num_jokers, &counts}: counts
+    def hand_type:
+      match counts.values().sort(math.greater)
+      | []: [num_jokers]
+      | [a, &rest]: List.cons(a + num_jokers, rest)
+    super(cards, bid, hand_type)
+
+  property hand_type_name :: Symbol:
+    match hand_type
+    | [5]: #'five
+    | [4, 1]: #'four
+    | [3, 2]: #'full_house
+    | [3, 1, 1]: #'three
+    | [2, 2, 1]: #'two_pair
+    | [2, 1, 1, 1]: #'pair
+    | [1, 1, 1, 1, 1]: #'high
+
+  method compare_hand_type(other :: Hand) :: CompareResult:
+    compare_enum (hand_type_name, other.hand_type_name):
+      #'high
+      #'pair
+      #'two_pair
+      #'three
+      #'full_house
+      #'four
+      #'five
+
+  method compare_cards(a :: List, b :: List) :: CompareResult:
+    cond
+    | a == [] && b == []: #'equal
+    | ~else:
+        refine_compare
+        | C.compare(a.first, b.first)
+        | compare_cards(a.rest, b.rest)
+
+  override method compare(other :: Hand) :: CompareResult:
+    refine_compare
+    | compare_hand_type(other)
+    | compare_cards(cards, other.cards)
+
+
+operator a_p <|> b_p:
+  p.choice(a_p, b_p)
+
+fun char_val_p(str :: String, val):
+  p.try(p.parse_sequence:
+          p.char(str[0])
+          p.pure(val))
+
+fun card_p(j_value):
+  char_val_p("2", 2) <|> char_val_p("3", 3) <|>  char_val_p("4", 4)
+    <|> char_val_p("5", 5) <|> char_val_p("6", 6) <|> char_val_p("7", 7)
+    <|> char_val_p("8", 8) <|> char_val_p("9", 9) <|> char_val_p("T", 10)
+    <|> char_val_p("J", j_value) <|> char_val_p("Q", 12) <|> char_val_p("K", 13)
+    <|> char_val_p("A", 14)
+
+fun hand_p(j_value):
+  let card_p: card_p(j_value)
+  p.parse_sequence:
+    a = card_p
+    b = card_p
+    c = card_p
+    d = card_p
+    e = card_p
+    p.pure([a,b,c,d,e])
+
+fun line_p(j_value):
+  p.parse_sequence:
+    hand = hand_p(j_value)
+    p.spaces
+    bid = p.integer
+    p.char(#{#\newline})
+    p.pure(Hand(hand, bid))
+
+fun input_p(j_value):
+  p.many1(line_p(j_value))
+
+fun make_run(j_value):
+  fun (input):
+    def values(hands :: List.of(Hand), []):
+      p.parse_string(input_p(j_value), input)
+    let hands :~ List.of(Hand):
+      hands.sort(Hand.less)
+    for values(sum = 0):
+      each:
+        h: hands
+        i: 1..
+      sum + i * h.bid
+
+def run1 = make_run(11)
+
+check:
+  run1(test_input) ~is 6440
+
+module part1:
+  run1(aoc.fetch_input(aoc.find_session(), 2023, 7))
+
+def run2 = make_run(1)
+
+check:
+  run2(test_input) ~is 5905
+
+module part2:
+  run2(aoc.fetch_input(aoc.find_session(), 2023, 7))

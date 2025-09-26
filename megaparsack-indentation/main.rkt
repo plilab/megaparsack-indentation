@@ -74,8 +74,9 @@
   (-> indentation-state? (-> syntax-box? string?))
   (match-define (indentation-state lower upper absmode relation) state)
   (define indentation (syntax-box-indentation box))
+  (define token (syntax-box-datum box))
   (define (make-error place)
-    (format "indentation ~a. Expecting a token at ~a." indentation place))
+    (format "Token ~a at indentation ~a. Expecting a token at ~a." token indentation place))
   (define rel (cond [absmode '=] [else relation]))
   (match rel
     [(cons 'const x) (make-error (~a "indentation" x #:separator " "))]
@@ -202,7 +203,7 @@
   (do
     [previous-state <- (indent-parameter)]
     [box <- (guard/p (syntax-box/p parser)
-              (has-valid-indentation previous-state) (~a previous-state) (make-indentation-error previous-state))]
+              (has-valid-indentation previous-state) (format "~a" previous-state) (make-indentation-error previous-state))]
     (define box-indentation (syntax-box-indentation box))
     (define new-state (update-indentation previous-state box-indentation))
     (indent-parameter new-state)

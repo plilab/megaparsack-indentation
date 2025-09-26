@@ -1,0 +1,156 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+fun map_string(f, s):
+  (racket.#{list->string}(
+     f(racket.#{string->list}(s))
+   ) :~ ReadableString).to_string()
+
+def input: aoc_api.retrieve_input_for_day(14)
+
+def test_input:
+  multiline:
+    "O....#...."
+    "O.OO#....#"
+    ".....##..."
+    "OO.#O....O"
+    ".O.....O#."
+    "O.#..O.#.#"
+    "..O..#O..O"
+    ".......O.."
+    "#....###.."
+    "#OO..#...."
+
+
+fun
+| fun_repeat(0, f, v): v
+| fun_repeat(n, f, v):
+    if n < 0
+    | #false
+    | fun_repeat(n - 1, f, f(v))
+
+fun transpose(grid :: List.of(List)):
+  for List (i : 0 .. grid[0].length()):
+    for List (row : grid):
+      row[i]
+
+fun shift_stones(row :: List) :: List:
+ recur loop(row=row, acc_stones=[], acc_holes=[]):
+   match row
+   | []: acc_holes ++ acc_stones
+   | List.cons(#{#\.}, tail):
+       loop(tail, acc_stones, List.cons(#{#\.}, acc_holes))
+   | List.cons(#{#\O}, tail):
+       loop(tail, List.cons(#{#\O}, acc_stones), acc_holes)
+   | List.cons(#{#\#}, tail):
+       acc_holes ++ acc_stones ++ [#{#\#}] ++ loop(tail, [], [])
+
+fun shift_stones_east(grid :: List):
+  for List (row : grid):
+    shift_stones(row)
+
+fun shift_stones_west(grid :: List):
+  for List (row : grid):
+    shift_stones(row.reverse()).reverse()
+
+fun shift_stones_south(grid :: List):
+  transpose(shift_stones_east(transpose(grid)))
+      
+fun shift_stones_north(grid :: List):
+  transpose(shift_stones_west(transpose(grid)))
+    
+fun
+| List.count(pred, [], n): n
+| List.count(pred, List.cons(hd, tail), n): List.count(pred, tail, (if pred(hd) | n + 1 | n))
+| List.count(pred, ls): List.count(pred, ls, 0)
+
+check:
+  map_string(shift_stones, "O....#O...")
+  ~is "....O#...O"
+
+class Grid(grid :: List.of(List.of(Char))):
+  constructor
+  | (s :: List.of(List.of(Char))): super(s)
+  | (s :: ReadableString):
+      super(racket.#{string->list}.map(utils.string.split_lines(s)))
+
+  method shift_north():
+    Grid(shift_stones_north(grid))
+
+  method shift_east():
+    Grid(shift_stones_east(grid))
+
+  method shift_south():
+    Grid(shift_stones_south(grid))
+
+  method shift_west():
+    Grid(shift_stones_west(grid))
+
+  method score():
+    for values(sum=0):
+      each:
+        row: grid.reverse()
+        i: 1 ..
+      sum + i * List.count(
+        fun | (#{#\O}): #true | (_): #false,
+        row
+      )      
+
+  method cycle():
+    this
+      .shift_north()
+      .shift_west()
+      .shift_south()
+      .shift_east()
+
+
+fun cycle_till_fixpoint(grid, ~limit: limit = 1000000000):
+  let seen: MutableMap()
+  recur loop(grid=grid, count=limit):
+    cond
+    | count == 0: grid.score()
+    | ~else:
+        let new_grid = grid.cycle()
+        if seen.has_key(new_grid)
+        | let diff = seen[new_grid] - count
+          let extra = count mod diff
+          (fun_repeat(extra - 1, fun (v): v.cycle(), new_grid).score())
+        | seen[new_grid] := count
+          loop(new_grid, count - 1)
+
+check:
+  Grid(test_input).shift_north().score()
+  ~is 136
+
+fun solve_for_part1(raw_input :: ReadableString):
+  Grid(raw_input).shift_north().score()
+
+fun solve_for_part2(raw_input :: ReadableString):
+  cycle_till_fixpoint(Grid(raw_input))
+
+def result1: solve_for_part1(input)
+// aoc_api.submit_result_for_day(14, result1)
+
+
+def result2: solve_for_part2(input)
+// aoc_api.submit_result_for_day(14, result2, ~level: 2)

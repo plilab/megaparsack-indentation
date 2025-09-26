@@ -1,0 +1,176 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(11)
+
+def test_input1:
+  multiline:
+    "...#......"
+    ".......#.."
+    "#........."
+    ".........."
+    "......#..."
+    ".#........"
+    ".........#"
+    ".........."
+    ".......#.."
+    "#...#....."
+
+
+check:
+  utils.List.all(fun (x): x == 1, [1,1,1,1,1])
+  ~is #true
+check:
+  utils.List.all(fun (x): x == 1, [1,1,1,2,1])
+  ~is #false
+
+class List.Indexed(ls :: List):
+  implements Sequenceable
+  override method to_sequence():
+    Sequence.make(
+      ~initial_position: Pair(ls, 0),
+      ~continue_at_position: fun | (Pair(List.cons(_, _), _)): #true | (_) : #false,
+      ~position_to_next: fun (Pair(List.cons(_, tail), ind)): Pair(tail, ind + 1),
+      ~position_to_element: fun (Pair(List.cons(hd, _), ind)): values(ind, hd)
+    )
+
+
+
+fun
+| dup_elt(0, [hd, tail, ...]): [hd,hd, tail, ...]
+| dup_elt(ind, List.cons(hd, tail)): List.cons(hd, dup_elt(ind - 1, tail))
+  
+check:
+  dup_elt(3, [1,2,3,4])
+  ~is: [1,2,3,4,4]
+
+check:
+  dup_elt(2, [1,2,3,4])
+  ~is: [1,2,3,3,4]
+
+  // sequence '$lhs : $rhs':
+  //   '(~outer_binds:
+  //       init_ls = $(rhs).ls,
+  //     ~recur_binds:
+  //       ind = 0
+  //       ls = init_ls,
+  //     ~head_guard:
+  //       ls != [],
+  //     ~inner_binds:
+  //       $lhs = values(ind, List.first(ls)),
+  //     ~recur_args:
+  //       (ind + 1, match ls | List.cons(_, tail): tail))'
+
+fun extract_points(lines):
+  for List:
+    each values(j,row): List.Indexed(lines)
+    each values(i,char): List.Indexed(row)
+    keep_when char == #{#\#}
+    utils.Point(i,j)
+
+fun
+| calculate_cost(ls): calculate_cost(0, ls)
+| calculate_cost(res, []): res
+| calculate_cost(res, List.cons(hd, tail)):
+    def new_res:
+      for values(sum=res):
+        each other: tail
+        sum + hd.abs_manhatten_distance(other)
+    calculate_cost(new_res, tail)
+
+fun parse_input(raw_input :: ReadableString):
+  racket.#{string->list}.map(utils.string.split_lines(raw_input))
+
+fun calculate_rows_to_expand(lines :: List.of(List.of(Char))):
+  for List:
+    each values(i, row): List.Indexed(lines)
+    skip_when !utils.List.all(fun (c): c == #{#\.}, row)
+    i
+
+fun calculate_cols_to_expand(lines :: List.of(List.of(Char))):
+  def col_length: lines[0].length()
+  for List:
+    each j: 0 .. col_length
+    keep_when:
+      for values(result=#true):
+        each row : lines
+        skip_when row[j] == #{#\.}
+        final_when #true
+        row[j] == #{#\.}
+    j
+
+fun solve_for_part1(raw_input :: ReadableString):
+  def lines = parse_input(raw_input)
+
+  def rows_to_expand: calculate_rows_to_expand(lines)
+
+  def cols_to_expand: calculate_cols_to_expand(lines)
+
+  def lines_w_expanded_rows:
+    for values(ls=lines):
+      each row: rows_to_expand.reverse()
+      dup_elt(row, ls)
+
+  def lines_expanded:
+    for values(ls=lines_w_expanded_rows):
+      each column: cols_to_expand.reverse()
+      for List:
+        each row: ls
+        dup_elt(column, row)
+
+  def points: extract_points(lines_expanded)
+
+  calculate_cost(points)
+
+check:
+  solve_for_part1(test_input1)
+  ~is 374
+
+def result1 = solve_for_part1(input)
+// aoc_api.submit_result_for_day(11, result1)
+
+fun solve_for_part2(raw_input :: ReadableString, ~by: by=1000000):
+  def lines = parse_input(raw_input)
+  def rows_to_expand: calculate_rows_to_expand(lines)
+  def cols_to_expand: calculate_cols_to_expand(lines)
+  def points: extract_points(lines)
+
+  def expanded_points:
+    def MAX_ROWS: rows_to_expand.length()
+    def MAX_COLS: cols_to_expand.length()
+    for List (point: points):
+      let mul_y: utils.List.find_index(rows_to_expand, fun (y): point.y < y) || MAX_ROWS
+      let mul_x: utils.List.find_index(cols_to_expand, fun (x): point.x < x) || MAX_COLS
+      utils.Point(
+        point.x + mul_x * (by - 1),
+        point.y + mul_y * (by - 1)
+      )
+
+  calculate_cost(expanded_points)
+
+check:
+  solve_for_part2(test_input1, ~by: 10)
+  ~is 1030
+check:
+  solve_for_part2(test_input1, ~by: 100)
+  ~is 8410
+
+let result2 = solve_for_part2(input)
+// aoc_api.submit_result_for_day(11, result2, ~level: 2)

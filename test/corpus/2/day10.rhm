@@ -1,0 +1,292 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(10)
+
+fun
+| List.last(List.cons(hd, [])): hd
+| List.last(List.cons(_, tail)): List.last(tail)
+
+
+let test_input:
+  multiline:
+   "....."
+   ".S-7."
+   ".|.|."
+   ".L-J."
+   "....."
+
+let test_input2:
+  multiline:
+    "..F7."
+    ".FJ|."
+    "SJ.L7"
+    "|F--J"
+    "LJ..."
+
+
+fun MutableSet.pop(set :: MutableSet):
+  let element:
+    for values(result=#false) (s : set):
+      final_when #true
+      s
+  set[element] := #false
+  element
+
+fun List.contains(ls, elt):
+  match ls
+  | []: #false
+  | List.cons(hd, tail):
+      if hd == elt
+      | #true
+      | List.contains(tail, elt)
+
+
+fun add_directed_edge(graph, c1 :: Point, c2 :: Point):
+  if graph.has_key(c1)
+  | graph[c1][c2] := #true
+  | graph[c1] := MutableSet(c2)
+  
+fun add_edge(graph, c1, c2):
+  add_directed_edge(graph, c1, c2)
+  add_directed_edge(graph, c2, c1)
+
+class Pipe(north :: Boolean, east :: Boolean, south :: Boolean, west :: Boolean)
+
+fun Pipe.of_char(char):
+  match char
+  | #{#\S}: Pipe(#true,#true,#true,#true)
+  | #{#\.}: Pipe(#false,#false,#false,#false)
+  | #{#\|}: Pipe(#true,#false,#true, #false)
+  | #{#\-}: Pipe(#false, #true , #false, #true)
+  | #{#\L}: Pipe(#true , #true , #false, #false)
+  | #{#\J}: Pipe(#true , #false, #false, #true)
+  | #{#\7}: Pipe(#false, #false, #true , #true)
+  | #{#\F}: Pipe(#false, #true , #true , #false)
+
+
+fun handle_edge(lines, graph, coord, char, ~delta: delta=1):
+  fun get_pipe(position):
+    let coord = position.div(delta)
+    cond
+    | 0 <= coord.y && coord.y < lines.length() && \
+      0 <= coord.x && coord.x < lines[coord.y].length():
+         Pipe.of_char(lines[coord.y][coord.x])
+    | ~else: Pipe(#false,#false,#false,#false)  
+
+  match char
+  | #{#\.}: #void
+  | c:
+      let pipe = Pipe.of_char(c)
+      when pipe
+      | when pipe.north && get_pipe(coord.north(~delta: delta)).south
+        | add_edge(graph, coord, coord.north(~delta: delta))
+        when pipe.east && get_pipe(coord.east(~delta: delta)).west
+        | add_edge(graph, coord, coord.east(~delta: delta))
+        when pipe.south && get_pipe(coord.south(~delta: delta)).north
+        | add_edge(graph, coord, coord.south(~delta: delta))
+        when pipe.west && get_pipe(coord.west(~delta: delta)).east
+        | add_edge(graph, coord, coord.west(~delta: delta))
+
+fun parse_input(raw_input :: ReadableString, ~delta: delta=1):
+  let graph = MutableMap()
+  let lines = utils.string.split_lines(raw_input)
+  let mutable start_pos = #false
+  for:
+    each:
+      line : lines
+      i : 0 ..
+    each:
+      char : line
+      j : 0 ..
+    if char == #{#\S}
+    | start_pos := Point(j * delta,i * delta)
+    | handle_edge(lines, graph, Point(j * delta, i * delta), char, ~delta: delta)
+  values(graph, start_pos)  
+
+fun get_connected(graph, node):
+  if graph.has_key(node)
+  | graph[node]
+  | MutableSet{}
+
+fun shortest_path(graph, start_pos):
+  let costs: MutableMap{start_pos: 0}
+  let parents: MutableMap{}
+  let mutable queue: [start_pos]
+
+  fun update_cost(node, new_cost):
+    cond:
+    | costs.has_key(node) && costs[node] > new_cost:
+        costs[node] := new_cost
+        #true
+    | !costs.has_key(node):
+        costs[node] := new_cost
+        #true
+    | ~else: #false
+
+  fun remove_node(nodes, neighbour):
+    for List:
+      each node : nodes
+      skip_when node == neighbour
+      node
+
+  fun insert_into_queue(get_cost, neighbour, queue):
+    match queue
+    | []: [neighbour]
+    | [node, tail, ...] when get_cost(node) > get_cost(neighbour):
+        let [new_tail, ...]: remove_node([node, tail, ...], neighbour)
+        [neighbour, new_tail, ...]
+    | [node, tail, ...]:
+        List.cons(node, insert_into_queue(get_cost, neighbour, [tail, ...]))
+
+  while queue != []:
+    let List.cons(node, tail) = queue
+    queue := tail
+    let new_cost: costs[node] + 1
+    for (neighbour : get_connected(graph, node)):
+      when update_cost(neighbour, new_cost)
+      | queue := insert_into_queue(fun (node): costs[node], neighbour, queue)
+        parents[neighbour] := node
+
+  values(costs, parents)
+
+
+fun find_cycle(graph, start_pos):
+  class Path(current, path, seen)
+  let {start_neighbour, ...} = get_connected(graph, start_pos).snapshot()
+  let mutable parent = MutableMap{}
+  let mutable queue = [Path(start_neighbour, [start_pos], Set{start_neighbour}), ...]
+  def mutable cycle_found = #false
+  for(start_neighbour : get_connected(graph, start_pos)):
+    parent[start_neighbour] := start_pos
+
+  while queue != [] && !cycle_found:
+    let [Path(pos, path,seen), rest, ...] = queue
+    queue := [rest,...]
+    let neighbours = get_connected(graph, pos)
+
+    for (neighbour : neighbours):
+      skip_when parent.has_key(pos) && parent[pos] == neighbour
+      skip_when seen[neighbour]
+      let entry = Path(neighbour, List.cons(pos, path), seen.union(Set{neighbour}))
+      queue := queue ++ [entry]
+      parent[neighbour] := pos
+      when get_connected(graph, neighbour)[start_pos]
+      | cycle_found := entry
+
+  List.cons(cycle_found.current, cycle_found.path).reverse()
+
+fun find_connected(is_valid_node, start_pos):
+  let seen_points: MutableSet{start_pos}
+  let mutable queue = [start_pos]
+
+  fun unseen_empty_node(node :: Point):
+     is_valid_node(node) && !seen_points[node]
+
+  while queue != []:
+    let [node, tail, ...]: queue
+    queue := [tail, ...]
+    when unseen_empty_node(node.north())
+    | queue := List.cons(node.north(), queue)
+      seen_points[node.north()] := #true
+    when unseen_empty_node(node.east())
+    | queue := List.cons(node.east(), queue)
+      seen_points[node.east()] := #true
+    when unseen_empty_node(node.south())
+    | queue := List.cons(node.south(), queue)
+      seen_points[node.south()] := #true
+    when unseen_empty_node(node.west())
+    | queue := List.cons(node.west(), queue)
+      seen_points[node.west()] := #true
+  seen_points
+
+
+
+fun interpolate_path(List.cons(start, path) :: List.of(Point)):
+  fun loop(current, rest):
+    match rest
+    | []:
+        when start.sub(current).sum() != 2 && start.sub(current).sum() != -2
+        | println(start.sub(current))
+        [current.add(start.sub(current).div(2))]
+    | [head, tail, ...]:
+        when head.sub(current).sum() != 2 &&  head.sub(current).sum() != -2
+        | println(head.sub(current))
+        let current_interp: current.add(head.sub(current).div(2))
+        let [new_tail, ...]: loop(head, [tail, ...])
+        [current_interp, head, new_tail, ...]
+  List.cons(start, loop(start, path))
+
+fun solve_for_part1(raw_input :: ReadableString):
+  def values(graph, start_pos): parse_input(raw_input)
+
+  def values(costs, parents): shortest_path(graph, start_pos)
+
+  def cycle = find_cycle(graph, start_pos)
+
+  for values(max_cost=#false) (node : cycle):
+    cond
+    | !max_cost: costs[node]
+    | costs[node] > max_cost: costs[node]
+    | ~else: max_cost
+
+check:
+  solve_for_part1(test_input)
+  ~is 4
+  
+check:
+  solve_for_part1(test_input2)
+  ~is 8
+
+def result1 = solve_for_part1(input)
+// result1
+
+fun solve_for_part2(raw_input :: ReadableString):
+  def MAX_X: utils.string.split_lines(raw_input)[0].length() * 2
+  def MAX_Y: utils.string.split_lines(raw_input).length() * 2
+
+  def values(graph, start_pos): parse_input(raw_input, ~delta: 2)
+
+  def values(costs, parents): shortest_path(graph, start_pos)
+
+  def [cycle, ...] = interpolate_path(find_cycle(graph, start_pos))
+  def path_points: Set{cycle, ...}
+
+
+  fun in_range(p :: Point):
+    0 <= p.x && p.x <= MAX_X && \
+       0 <= p.y && p.y <= MAX_Y
+
+  fun is_valid_node(node :: Point): in_range(node) && !path_points[node]
+
+  def contained_points: find_connected(is_valid_node, Point(start_pos.x,start_pos.y + 1))
+
+  for values(sum=0):
+    each x: 0 .. MAX_X/2
+    each y: 0 .. MAX_Y/2
+    if contained_points[Point(x * 2, y * 2)]
+    | sum + 1
+    | sum
+
+check:
+  solve_for_part2(test_input)
+  ~is 17
+
+let result2 = solve_for_part2(input)

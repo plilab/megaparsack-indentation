@@ -1,0 +1,40 @@
+#lang rhombus/and_meta
+
+import:
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-join} as concat
+
+export:
+  unless
+  while
+  multiline
+
+
+expr.macro 'unless $expr ...
+            | $body
+              ...':
+  'if $expr ...
+   | #void
+   | $body
+     ...'
+
+expr.macro 'while $expr ...:
+              $body
+              ...':
+  'block:
+     fun loop():
+       when $expr ...
+       | $body
+         ...
+         loop()
+     loop()'
+
+
+expr.macro 'multiline:
+              $line
+              ...':
+  '(string.concat(
+     [$line, ...],
+     "\n"
+   ) :~ ReadableString).to_string()'

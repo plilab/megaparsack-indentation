@@ -1,0 +1,175 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("data/heap.rkt") as heap
+  meta:
+    lib("racket/syntax.rkt") as syntax
+
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(18)
+
+def test_input:
+  multiline:
+    "R 6 (#70c710)"
+    "D 5 (#0dc571)"
+    "L 2 (#5713f0)"
+    "D 2 (#d2c081)"
+    "R 2 (#59c680)"
+    "D 2 (#411b91)"
+    "L 5 (#8ceee2)"
+    "U 2 (#caa173)"
+    "L 1 (#1b58a2)"
+    "U 2 (#caa171)"
+    "R 2 (#7807d2)"
+    "U 3 (#a77fa3)"
+    "L 2 (#015232)"
+    "U 2 (#7a21e3)"
+
+let raw_input = test_input
+
+annot.macro 'Direction' : 'matching(#'left || #'right || #'up || #'down)'
+
+annot.macro 'Matrix': 'Array.of(Array.of(Int))'
+// annot.macro 'Matrix_of($ty)': 'Array.of(Array.of($of))'
+
+namespace Direction:
+  export: to_delta
+
+  fun
+  | to_delta(#'left): utils.Point(-1, 0)
+  | to_delta(#'right): utils.Point(1, 0)
+  | to_delta(#'up): utils.Point(0, -1)
+  | to_delta(#'down): utils.Point(0, 1)
+
+class Instruction(direction :: Direction, distance :: Int, color :: String):
+
+  method decode():
+     let distance = racket.#{string->number}(racket.substring(color, 1, 6), 16)
+     let direction = match color[6] | #{#\0}: #'right | #{#\1}: #'down | #{#\2}: #'left | #{#\3}: #'up
+     Instruction(direction, distance, "")
+
+  method delta() :: utils.Point:
+    Direction.to_delta(direction).mul(distance)
+
+class DigMap(data :: Array.of(Array.of(Boolean)), base_x :: Int, base_y :: Int):
+  implements MutableIndexable
+
+  method to_string():
+    for values(res = "") (i : 0 .. data.length()):
+      let elt = data[i]
+      res +& "\n" +& \
+       for values(res = "") (j : 0 .. elt.length()):
+         res +& if elt[j] | "#" | "."
+
+  override method get(point :: utils.Point):
+    data[point.y - base_y][point.x - base_x]
+
+  override method set(point :: utils.Point, val):
+    data[point.y - base_y][point.x - base_x] := val
+
+  method count_area():
+    for values(area=0) (i :  0 .. data.length()):
+      let row = data[i]
+      for values(area = area) (j : 0 .. row.length()):
+          if row[j] | area + 1 | area
+
+
+  method fill_in_interior():
+    let mutable queue = [utils.Point(1, 1)]
+    while queue != []:
+      let List.cons(hd,tail) = queue
+      queue := tail
+
+      for (point : [hd.north(), hd.south(), hd.west(), hd.east()]):
+        keep_when 0 <= point.x - base_x && point.x - base_x < data[0].length()
+        keep_when 0 <= point.y - base_y && point.y - base_y < data.length()
+        keep_when !data[point.y - base_y][point.x - base_x]
+        data[point.y - base_y][point.x - base_x] := #true
+        queue := List.cons(point, queue)
+
+fun calculate_bounds(instructions :: List.of(Instruction)):
+  let [mutable min_x, mutable max_x,
+       mutable min_y, mutable max_y] : [0,0,0,0]
+  fun update_min_max(pos):
+    min_x := math.min(min_x, pos.x)
+    max_x := math.max(max_x, pos.x)
+    min_y := math.min(min_y, pos.y)
+    max_y := math.max(max_y, pos.y)
+    pos
+
+  for values(current_position=utils.Point(0, 0)) (instruction : instructions):
+    update_min_max(current_position.add(instruction.delta()))
+  [[min_x, max_x], [min_y, max_y]]
+
+fun parse_input(raw_input :: ReadableString):
+  for List (line : utils.string.split_lines(raw_input)):
+    let [dir :: ReadableString, no, color] = utils.string.split(line, " ")
+    let dir = match dir.to_string() | "R": #'right | "L": #'left | "U": #'up | "D": #'down
+    let no = String.to_number(no)
+    let color :: ReadableString = racket.#{substring}(color, 1, color.length() - 1)
+    Instruction(dir, no, color.to_string())
+
+fun build_dig_map(instructions :: List.of(Instruction)):
+  let [[min_x, max_x], [min_y, max_y]]: calculate_bounds(instructions)
+  def data: Array.make(max_y - min_y + 1, #false)
+  for (i : 0 .. max_y - min_y + 1):
+    data[i] := Array.make(max_x - min_x + 1, #false)
+  DigMap(data, min_x, min_y)
+
+
+fun solve_for_part1(raw_input :: ReadableString):
+  let instructions = parse_input(raw_input)
+  let dig_map = build_dig_map(instructions)
+  for values(current_position=utils.Point(0,0)) (instruction : instructions):
+    let delta = Direction.to_delta(instruction.direction)
+    for values(current_position=current_position) (i : 0 .. instruction.distance):
+      let new_position = current_position.add(delta)
+      dig_map[new_position] := #true
+      new_position
+
+  dig_map.fill_in_interior()
+  dig_map.count_area()
+
+check:
+  solve_for_part1(test_input)
+  ~is 62
+
+//def result1 = solve_for_part1(input)
+
+
+fun solve_for_part2(raw_input):
+  let instructions = parse_input(raw_input)
+  def values(_, vertices, perimeter):
+    for values(current_position=utils.Point(0,0), vertices=[utils.Point(0,0)], perimeter=0) (ins : instructions):
+      let delta = ins.decode().delta()
+      let new_position = current_position.add(delta)
+      values(new_position, List.cons(new_position, vertices), perimeter + math.abs(delta.x) + math.abs(delta.y))
+  let List.cons(prev_vertex, vertexes) = vertices.reverse()
+
+  let values(_, sum):
+    for values(prev_vertex=prev_vertex, sum=0) (vertex : vertexes):
+      let new_sum = sum + ((prev_vertex.x * vertex.y) - (vertex.x * prev_vertex.y))
+      values(vertex, new_sum)
+  (1/2) * math.abs(sum) + perimeter/2 + 1
+
+check:
+  solve_for_part2(test_input)
+  ~is 952408144115
+
+solve_for_part2(input)

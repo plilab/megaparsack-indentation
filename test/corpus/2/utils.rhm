@@ -1,0 +1,135 @@
+#lang rhombus/and_meta
+
+import:
+  lib("racket/main.rkt") as racket
+  lib("racket/string.rkt") as racket_string:
+    rename:
+      #{string-split} as split
+      #{non-empty-string?} as string_is_not_empty
+
+
+export:
+  string
+  set
+  array
+  list
+  List
+  Point
+
+
+namespace array:
+  export:
+    sum
+
+  fun sum(arr :: Array) :: Number:
+    for values(sum=0):
+      each elt: arr
+      sum + elt
+
+namespace set:
+  export:
+    of_list
+
+  fun of_list(xs :: List) :: Set:
+    for Set (x : xs): x
+
+
+namespace string:
+  export:
+    split_lines
+    split
+    join
+    trim
+
+  fun trim(s :: ReadableString) :: String:
+    (racket_string.#{string-trim}(s) :: ReadableString).to_string()
+
+  fun join(~join_by: join="", s :: ReadableString, ...) :: String:
+    (racket_string.#{string-join}([s, ...], join) :: ReadableString).to_string()
+
+  fun split_lines(s :: ReadableString) :: List.of(ReadableString):
+    racket_string.split(s, "\n")
+
+  fun split(s :: ReadableString, on :: ReadableString, ~keep_blank: keep_blank = #false) :: List.of(String):
+    let segments = racket_string.split(s, on)
+    for List:
+      each seg: segments
+      keep_when keep_blank || racket_string.string_is_not_empty(seg)
+      seg.to_string()
+
+namespace list:
+  export:
+    is_empty
+    partition
+    insert_into_sorted
+
+  fun insert_into_sorted(elt, ls :: List, ~key: keyf):
+    match ls
+    | [hd, tl, ...] when keyf(hd) <= keyf(elt): [elt, hd, tl, ...]
+    | List.cons(hd,tl): List.cons(hd, insert_into_sorted(elt, tl, ~key: keyf))
+    | []: [elt]
+
+
+  fun is_empty(ls :: List) :: Boolean:
+    match ls
+    | []: #true
+    | List.cons(_, _): #false
+
+  fun partition(input_ls :: List, by) :: List:
+    fun loop(acc, current_ls, tail):
+      match tail
+      | []: List.cons(current_ls.reverse(), acc)
+      | List.cons(hd, tail):
+          if hd == by
+          | loop(List.cons(current_ls.reverse(), acc), [], tail)
+          | loop(acc, List.cons(hd,current_ls), tail)
+    let result: loop([], [], input_ls)
+    result.reverse()
+
+fun List.all(pred :: Function, ls):
+  for values(result=#true):
+    each elt : ls
+    skip_when pred(elt)
+    final_when #true
+    #false
+
+
+fun List.nth(ls, ind):
+  if ind < 0
+  | #false
+  | for values(result=#false):
+      each:
+        elt: ls
+        i: 0 ..
+      final_when i == ind
+      if i == ind | result | #false
+
+fun List.set_nth(ls, ind, vl):
+  match [ls, ind]
+  | [List.cons(_, tail), 0]: List.cons(vl, tail)
+  | [List.cons(hd, tail), n]: List.cons(hd, List.set_nth(tail, n - 1, vl))
+
+fun
+| List.find_index(ls, pred): List.find_index(ls, pred, 0)
+| List.find_index([], pred, ind): #false
+| List.find_index(List.cons(hd, tail), pred, ind):
+    if pred(hd)
+    | ind
+    | List.find_index(tail, pred, ind + 1)
+
+
+class Point(x :: Int, y :: Int):
+  method abs_manhatten_distance(other :: Point):
+    math.abs(x - other.x) + math.abs(y - other.y)
+
+  method sum(): x + y
+  method add(other): Point(x + other.x, y + other.y)
+  method sub(other): Point(x - other.x, y - other.y)
+
+  method mul(by): Point(x * by, y * by)
+  method div(by): Point(x/by, y/by)
+
+  method north(~delta: delta=1) :: Point: Point(x, y - delta)
+  method east(~delta: delta=1) :: Point: Point(x+delta, y)
+  method south(~delta: delta=1) :: Point: Point(x, y+delta)
+  method west(~delta: delta=1) :: Point: Point(x-delta, y)

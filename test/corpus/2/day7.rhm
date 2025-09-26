@@ -1,0 +1,257 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(7)
+def test_input:
+  multiline:
+    "32T3K 765"
+    "T55J5 684"
+    "KK677 28"
+    "KTJJT 220"
+    "QQQJA 483"
+
+class Card(name, score :: Int)
+
+fun Card.make (c :: Char) :
+  match c
+  | (#{#\A}): Card(c, 13)
+  | (#{#\K}): Card(c, 12)
+  | (#{#\Q}): Card(c, 11)
+  | (#{#\J}): Card(c, 10)
+  | (#{#\T}): Card(c, 9)
+  | (#{#\9}): Card(c, 8)
+  | (#{#\8}): Card(c, 7)
+  | (#{#\7}): Card(c, 6)
+  | (#{#\6}): Card(c, 5)
+  | (#{#\5}): Card(c, 4)
+  | (#{#\4}): Card(c, 3)
+  | (#{#\3}): Card(c, 2)
+  | (#{#\2}): Card(c, 1)
+
+fun Card.make_joker (c :: Char) :
+  match c
+  | (#{#\A}): Card(c, 13)
+  | (#{#\K}): Card(c, 12)
+  | (#{#\Q}): Card(c, 11)
+  | (#{#\T}): Card(c, 9)
+  | (#{#\9}): Card(c, 8)
+  | (#{#\8}): Card(c, 7)
+  | (#{#\7}): Card(c, 6)
+  | (#{#\6}): Card(c, 5)
+  | (#{#\5}): Card(c, 4)
+  | (#{#\4}): Card(c, 3)
+  | (#{#\3}): Card(c, 2)
+  | (#{#\2}): Card(c, 1)
+  | (#{#\J}): Card(c, 0)
+
+
+
+class Hand(s :: String, chars :: List.of(Card), char_set :: Map.of(Char, Int), rev_char_set :: Map.of(Int, List.of(Char)), joker_count:: Int):
+
+  method five_of_a_kind(): rev_char_set.has_key(5)
+  method four_of_a_kind(): rev_char_set.has_key(4)
+  method full_house(): rev_char_set.has_key(3) && rev_char_set.has_key(2)
+  method three_of_a_kind(): rev_char_set.has_key(3)
+  method two_pair(): rev_char_set.has_key(2) && rev_char_set[2].length() == 2
+  method one_pair(): rev_char_set.has_key(2) 
+  method high_card(): rev_char_set.has_key(1)  && rev_char_set[1].length() == 5
+
+  method score() :: Int:
+    // five of a kind
+    cond
+    | five_of_a_kind():
+        6
+    | four_of_a_kind():
+        5
+    | full_house():
+        4
+    | three_of_a_kind():
+        3
+    | two_pair():
+        2
+    | one_pair():
+        1
+    | high_card():
+        0
+    
+  method score_with_jokers() :: Int:
+     if joker_count == 0
+     | score()
+     | let values(max_occ, max_cs):
+         for values(res=0, res_cs=#false):
+           each values(k, cs): rev_char_set
+           cond
+           | !res: values(k, cs)
+           | k > res: values(k, cs)
+           | ~else: values(res, res_cs)
+       let joker_occ: max_occ + joker_count
+       match joker_occ
+       | 5: 6
+       | 4: 5
+       | 3 when rev_char_set.has_key(2) && rev_char_set[2].length() == 2: 4
+       | 3: 3
+       | 2: 1
+
+  constructor
+  | (hand :: ReadableString):
+      let chars:
+        for List:
+          each card : hand
+          Card.make(card)
+      let char_set:
+        let cset : MutableMap()
+        for:
+          each card : hand
+          if cset.has_key(card)
+          | cset[card] := cset[card] + 1
+          | cset[card] := 1
+        cset.snapshot()
+      let rev_char_set:
+        let cset : MutableMap()
+        for:
+          each values(char,occs) : char_set
+          if cset.has_key(occs)
+          | cset[occs] := List.cons(char, cset[occs])
+          | cset[occs] := [char]
+        cset.snapshot()
+
+      super(hand, chars, char_set, rev_char_set, 0)
+  | (hand :: ReadableString, has_jokers :: Boolean):
+      if !has_jokers
+      | super(hand)
+      | let chars:
+          for List:
+            each card : hand
+            Card.make_joker(card)
+        let mutable jokers: 0
+        let char_set:
+          let cset : MutableMap()
+          for:
+            each card : hand
+            cond
+            | card == #{#\J}: jokers := jokers + 1
+            | cset.has_key(card):
+                cset[card] := cset[card] + 1
+            | ~else: cset[card] := 1
+          cset.snapshot()
+        let rev_char_set:
+          let cset : MutableMap()
+          for:
+            each values(char,occs) : char_set
+            if cset.has_key(occs)
+            | cset[occs] := List.cons(char, cset[occs])
+            | cset[occs] := [char]
+          cset.snapshot()
+
+        super(hand, chars, char_set, rev_char_set, jokers)
+
+
+
+
+
+fun card_list_lte(c1 :: List.of(Card), c2 :: List.of(Card)):
+  match [c1, c2]
+  | [List.cons(c1, c1_tail), List.cons(c2, c2_tail)]:
+      cond
+      | c1.score == c2.score: card_list_lte(c1_tail, c2_tail)
+      | ~else: c1.score < c2.score
+  | [[], []]: #false
+
+
+check:
+  card_list_lte([Card("a", 1), Card("b", 2)], [Card("a", 10), Card("b", 20)])
+  ~is #true
+check:
+  card_list_lte([Card("a", 1), Card("b", 2)], [Card("a", 1), Card("b", 20)])
+  ~is #true
+
+fun deck_lt(ld :: Pair.of(Hand, Int), rd :: Pair.of(Hand, Int)):
+  let ld_score = ld.first.score()
+  let rd_score = rd.first.score()
+  cond
+  | ld_score < rd_score: #true
+  | ld_score == rd_score: card_list_lte(ld.first.chars, rd.first.chars)
+  | ~else: #false
+
+check:
+  deck_lt(Pair(Hand("33332"), 1), Pair(Hand("2AAAA"), 1))
+  ~is #false
+
+check:
+  deck_lt(Pair(Hand("77888"), 1), Pair(Hand("77788"), 1))
+  ~is #false
+
+let raw_input: test_input
+
+fun calculate_result1(raw_input :: ReadableString):
+
+  let cards:
+    for List (line: utils.string.split_lines(raw_input)):
+      let [hand_str, bid] = utils.string.split(line, " ")
+      let hand = Hand(hand_str)
+      Pair(hand, String.to_number(bid))
+
+
+  let sorted_cards = cards.sort(deck_lt)
+  for values(sum = 0): 
+    each:
+      Pair(card, bid): sorted_cards
+      i: 1 ..
+    sum + i * bid
+
+check:
+  calculate_result1(test_input)
+  ~is 6440
+
+let result1: calculate_result1(input)
+// aoc_api.submit_result_for_day(7, result1)
+
+fun deck_lt_joker(ld :: Pair.of(Hand, Int), rd :: Pair.of(Hand, Int)):
+  let ld_score = ld.first.score_with_jokers()
+  let rd_score = rd.first.score_with_jokers()
+  cond
+  | ld_score < rd_score: #true
+  | ld_score == rd_score: card_list_lte(ld.first.chars, rd.first.chars)
+  | ~else: #false
+
+fun calculate_result2(raw_input :: ReadableString):
+
+  let cards:
+    for List (line: utils.string.split_lines(raw_input)):
+      let [hand_str, bid] = utils.string.split(line, " ")
+      let hand = Hand(hand_str, #true)
+      Pair(hand, String.to_number(bid))
+
+
+  let sorted_cards = cards.sort(deck_lt_joker)
+  for values(sum = 0): 
+    each:
+      Pair(card, bid): sorted_cards
+      i: 1 ..
+    sum + i * bid
+
+
+check:  
+  calculate_result2(test_input)
+  ~is 5905
+
+let result2: calculate_result2(input)
+// aoc_api.submit_result_for_day(7, result2, ~level: 2)
+

@@ -1,0 +1,109 @@
+#lang rhombus/and_meta
+
+import:
+  file("./utils/aoc_api.rhm")
+  file("./utils/utils.rhm")
+  file("./utils/lang.rhm") open
+  lib("racket/main.rkt") as racket:
+    rename:
+      #{char-numeric?} as is_numeric_char
+      #{char->integer} as char_to_int
+      #{with-input-from-file} as with_input_from_file
+      #{with-output-to-file} as with_output_to_file
+      #{file-exists?} as exists_file
+
+  lib("racket/string.rkt") as string:
+    rename:
+      #{string-prefix?} as is_string_prefix
+      #{string-split} as split
+      #{string-trim} as trim
+
+def input: aoc_api.retrieve_input_for_day(4)
+
+def test_input:
+  multiline:
+    "Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53"
+    "Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19"
+    "Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1"
+    "Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83"
+    "Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36"
+    "Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11"
+
+
+class Card(id :: Int, goal :: Set.of(Int), current :: Set.of(Int)):
+
+  method count_matching():
+    goal.intersect(current).length()
+
+  method calculate_score():
+    let no_matching: count_matching()
+    if no_matching > 0
+    | math.expt(2, no_matching - 1)
+    | 0
+
+fun parse_card_id(card :: String):
+  match utils.string.split(card, " ")
+  | ["Card", id]: String.to_number(id)
+  | other: racket.error("invalid input", other)
+
+fun parse_int_list(ls :: String):
+  for List:
+    each num_str: utils.string.split(ls, " ")
+    def num = String.to_number(num_str)
+    skip_when !num
+    num
+
+fun parse_card_desc(desc :: String):
+  match utils.string.split(desc, "|")
+  | [raw_goal, raw_have]:
+      let goal = parse_int_list(raw_goal)
+      let have = parse_int_list(raw_have)
+      values(goal, have)
+
+fun parse_input(input :: ReadableString):
+  for List:
+    each raw_line : utils.string.split_lines(input)
+    let line = raw_line.to_string()
+    match utils.string.split(line, ":")
+    | [card, desc]:
+        let id = parse_card_id(card)
+        let values(goal, have) = parse_card_desc(desc)
+        Card(id, utils.set.of_list(goal), utils.set.of_list(have))
+
+fun calculate_result1(raw_input :: ReadableString):
+  let cards: parse_input(raw_input)
+  for values(sum=0) (card : cards):
+    let count: card.calculate_score()
+    sum + count
+
+check:
+  calculate_result1(test_input)
+  ~is 13
+
+let result1 = calculate_result1(input)
+// aoc_api.submit_result_for_day(4, result1)
+
+
+fun calculate_result2(raw_input):
+  let cards: parse_input(raw_input)
+  let card_count: Array.make(cards.length(), 1)
+
+
+  for:
+    each:
+      i: 0 ..
+      card: cards
+    let current_card_count: card_count[i]
+    let no_matching = card.count_matching()
+    for:
+      each j: i + 1 .. i + no_matching + 1
+      card_count[j] := card_count[j] + current_card_count
+
+  utils.array.sum(card_count)
+
+check:
+  calculate_result2(test_input)
+  ~is 30
+
+let result2 = calculate_result2(input)
+// aoc_api.submit_result_for_day(4, result2, ~level: 2)
