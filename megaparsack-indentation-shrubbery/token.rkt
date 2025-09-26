@@ -9,7 +9,7 @@
   lex-shrubbery)
 
 (define-tokens basic-tokens (bytestring string plainident identifier keyword number operator boolean void))
-(define-empty-tokens punct-tokens (line-continuation comment colon newline bar semicolon left-paren right-paren left-bracket right-bracket left-brace right-brace quote))
+(define-empty-tokens punct-tokens (line-continuation comment colon newline bar comma semicolon left-paren right-paren left-bracket right-bracket left-brace right-brace quote))
 
 (define-lex-abbrevs
   [plainident (:: (:or alphabetic #\_) (:* (:or alphabetic numeric #\_)))]
@@ -135,6 +135,7 @@
     [#\[ (token-left-bracket)]
     [#\] (token-right-bracket)]
     [#\' (token-quote)]
+    [#\, (token-comma)]
 
     ;;; Numbers
     [(:or float integer fraction)
