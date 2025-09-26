@@ -160,7 +160,7 @@
       ['>= (values parent-lower inf-indentation)]
       ['> (values (add1 parent-lower) inf-indentation)]))
   (match-define (indentation-state lower upper _ _) parent-state)
-  (match-define (cons child-lower child-upper) (local-indentation-child-range relation lower upper))
+  (match-define-values (child-lower child-upper) (local-indentation-child-range relation lower upper))
   (struct-copy indentation-state parent-state [lower child-lower] [upper child-upper]))
 
 
@@ -180,10 +180,11 @@
             [else (error "local-indentation: assertion failed: child-upper > 0")]))
         (struct-copy indentation-state child-state [lower parent-lower] [upper restricted-upper])]))
 
-;; TODO Analyze why the absmode cond is here
-(define (local-indentation/p relation parser)
+(define/contract (local-indentation/p relation parser)
+  (-> relation? parser? parser?)
   (do
     [(and parent-state (indentation-state _ _ absmode _)) <- (indent-parameter)] ; previous indentation interval
+    ;; TODO Analyze why the absmode cond is here
     (cond
       [absmode parser]
       [else
@@ -194,7 +195,8 @@
          (indent-parameter (restrict-parent-range-from-child-range relation #:parent parent-state #:child child-state)) ; calculate indentation based on previous and this range
          (pure parsed-expression))]))) ; This is the range of the expression
 
-(define (local-absolute-indentation/p parser)
+(define/contract (local-absolute-indentation/p parser)
+  (-> parser? parser?)
   (do
     [(and parent-state (indentation-state _ _ parent-absmode _)) <- (indent-parameter)]
     (indent-parameter (struct-copy indentation-state parent-state [absmode #t]))
@@ -203,7 +205,8 @@
     (indent-parameter (struct-copy indentation-state child-state [absmode parent-absmode]))
     (pure parsed-expression)))
 
-(define (absolute-indentation/p parser)
+(define/contract (absolute-indentation/p parser)
+  (-> parser? parser?)
   (do
     [(and parent-state (indentation-state _ _ parent-absmode _)) <- (indent-parameter)]
     (indent-parameter (struct-copy indentation-state parent-state [absmode #t]))
