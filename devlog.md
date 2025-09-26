@@ -2,6 +2,12 @@
 
 Changes to the system in reverse chronological order
 
+## Fri 26 Sep 2025 02:32:42 PM +08
+
+- Refactored the megaparsack indentation library
+    - Moved test code into `test` module
+    - Make defensive checking in `update-indentation` into a contract,
+      deduplicated checking between `guard/p` and `update-indentation`.
 
 ## Fri 26 Sep 2025 02:39:34 AM +08
 - Made a lexer

@@ -40,6 +40,7 @@
   (-> syntax-box? indentation?)
   (add1 (srcloc-column (syntax-box-srcloc box))))
 
+
 ; TODO Implement a gen:custom-write interface on this to make the errors look nicer
 (struct indentation-state (lower upper absmode relation)
   #:transparent
@@ -57,10 +58,8 @@
   (-> indentation? boolean?)
   (= inf-indentation a))
 
-(define/contract ((has-valid-indentation state) box)
-  (-> indentation-state? (-> syntax-box? boolean?))
+(define (valid-indentation? state indentation)
   (match-define (indentation-state lower upper absmode relation) state)
-  (define indentation (syntax-box-indentation box))
   (define rel (cond [absmode '=] [else relation]))
   (match rel
     [(cons 'const x) (= x indentation)]
@@ -69,13 +68,10 @@
     ['>= (<= lower indentation)]
     ['= (and (<= lower indentation) (<= indentation upper))]))
 
-(define/contract ((make-indentation-error state) box)
-  (-> indentation-state? (-> syntax-box? string?))
+(define (make-indentation-error state indentation)
   (match-define (indentation-state lower upper absmode relation) state)
-  (define indentation (syntax-box-indentation box))
-  (define token (syntax-box-datum box))
   (define (make-error place)
-    (format "Token ~a at indentation ~a. Expecting a token at ~a." token indentation place))
+    (format "indentation ~a. Expecting ~a." indentation place))
   (define rel (cond [absmode '=] [else relation]))
   (match rel
     [(cons 'const x) (make-error (~a "indentation" x #:separator " "))]
@@ -84,41 +80,58 @@
     ['>= (make-error (~a "indentation greater than or equal to" lower #:separator " "))]
     ['= (make-error (~a "indentation between" lower "and" upper #:separator " "))]))
 
+(define (indentation-in-range/c state)
+  (flat-contract-with-explanation
+    (lambda (indentation)
+      (cond
+        [(valid-indentation? state indentation) #t]
+        [else
+          (lambda (blame)
+            (raise-blame-error blame indentation (make-indentation-error state indentation)))]))
+    #:name 'indentation-in-range/c))
+
 ;; Updates the indentation state's range to a sub-range based on the
 ;; indentation and the interal relation.
-;;
-;; This function assumes that the indentation is valid for the initial given indentation state.
-;; To validate indentaiton see `has-valid-indentation`.
 (define/contract (update-indentation state indentation)
-  (-> indentation-state? indentation? indentation-state?)
-  (define (throw-error place)
-    (error (format "Found a token at indentation ~a. Expecting a token at ~a." indentation place)))
-  (match-define (indentation-state lower upper absmode relation) state)
+  ;; This function has defensive checking for valid indentation, but it raises
+  ;; an error. If you want to fail the megaparsack parser instead, use
+  ;; `guard/p`, `box-valid-indentation?` and `make-box-indentation-error`. See
+  ;; `indent/p` for an example.
+  (->i ([state indentation-state?]
+        [indentation (state) (and/c indentation? (indentation-in-range/c state))])
+       [result indentation-state?])
+  (match-define (indentation-state _ upper absmode relation) state)
   (define rel (cond [absmode '=]
                     [else relation]))
   (match rel
-    [(cons 'const x)
-     (cond
-       [(= x indentation) (struct-copy indentation-state state [absmode #f])]
-       [else (throw-error (~a "indentation" x #:separator " "))])]
+    [(cons 'const x) [(= x indentation) (struct-copy indentation-state state [absmode #f])]]
     ['* (struct-copy indentation-state state [absmode #f])]
-    ['>
-     (cond
-       [(< lower indentation)
-        (struct-copy indentation-state state [upper (min (sub1 indentation) upper)] [absmode #f])]
-       [else (throw-error (~a "an indentation greater than" lower #:separator " "))])]
-    ['>=
-     (cond
-       [(<= lower indentation)
-        (struct-copy indentation-state state [upper (min indentation upper)] [absmode #f])]
-       [else (throw-error (~a "an indentation greater than or equal to" lower #:separator " "))])]
-    ['=
-     (cond
-       [(and (<= lower indentation) (<= indentation upper))
-        (struct-copy indentation-state state [lower indentation] [upper indentation] [absmode #f])]
-       [else (throw-error (~a "indentation between" lower "and" upper #:separator " "))])]))
+    ['> (struct-copy indentation-state state [upper (min (sub1 indentation) upper)] [absmode #f])]
+    ['>= (struct-copy indentation-state state [upper (min indentation upper)] [absmode #f])]
+    ['= (struct-copy indentation-state state [lower indentation] [upper indentation] [absmode #f])]))
+
+
+(define ((make-box-indentation-error state) box)
+  (define token (syntax-box-datum box))
+  (define indentation (syntax-box-indentation box))
+  (format "Token ~a at ~a" token (make-indentation-error state indentation)))
+
+(define ((box-valid-indentation? state) box)
+  (define indentation (syntax-box-indentation box))
+  (valid-indentation? state indentation))
 
 (define indent-parameter (make-parser-parameter (indentation-state 0 inf-indentation #f '>)))
+
+(define (indent/p parser)
+  (do
+    [previous-state <- (indent-parameter)]
+    [box <- (guard/p (syntax-box/p parser)
+              (box-valid-indentation? previous-state) (format "~a" previous-state) (make-box-indentation-error previous-state))]
+    (define box-indentation (syntax-box-indentation box))
+    (define new-state (update-indentation previous-state box-indentation))
+    (indent-parameter new-state)
+    (pure (syntax-box-datum box))))
+
 
 (define (local-token-mode/p relation-transformer parser)
   (do
@@ -198,16 +211,6 @@
     (indent-parameter (struct-copy indentation-state child-state [absmode (and parent-absmode child-absmode)]))
     (pure parsed-expression)))
 
-(define (indent/p parser)
-  (do
-    [previous-state <- (indent-parameter)]
-    [box <- (guard/p (syntax-box/p parser)
-              (has-valid-indentation previous-state) (format "~a" previous-state) (make-indentation-error previous-state))]
-    (define box-indentation (syntax-box-indentation box))
-    (define new-state (update-indentation previous-state box-indentation))
-    (indent-parameter new-state)
-    (pure (syntax-box-datum box))))
-
 ;; (define (indent-token/p rel check-soucrce-loc parser)
 ;;   (do
 ;;       ; set beforehand
@@ -255,4 +258,4 @@
 
   (check-equal? (parse-string bracket-parser "(  [(\n    ) ]\n)") (success '((parens ((bracket ((parens ()))))))))
 
-  (check-equal? (parse-string bracket-parser " (  [(\n     ) \n   ]\n )") (success '((parens ((bracket ((parens ())))))))))
+  (check-equal? (parse-string bracket-parser " (  [(\n     ) \n ]\n )") (success '((parens ((bracket ((parens ())))))))))
