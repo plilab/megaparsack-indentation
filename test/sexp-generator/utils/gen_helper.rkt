@@ -27,7 +27,7 @@
 
 (define (gen-generator-list generator [recurse-limit 2])
   (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
-                                                [head (generator)]
+                                                [head (generator (sub1 recurse-limit))]
                                                 [tail
                                                  (if recurse?
                                                      (gen-generator-list generator
@@ -42,7 +42,6 @@
 (define gen-group null)
 (define gen-block null)
 (define gen-alts null)
-
 (define gen-item-list null)
 (define gen-group-list null)
 (define gen-block-list null)
@@ -56,42 +55,43 @@
                         (gen-num))
                       (delay
                         (gen-name)))))
+
 ;;; (op symbol)
 (define (gen-operator)
   (bind-generators ([a (choose-one-of (list '+ '- '* '/ '= '==))]) (list 'op a)))
 
 ;;; (parens group)
-(define (gen-parens)
-  (bind-generators ([grps (gen-group-list)]) (append (list 'parens) grps)))
+(define (gen-parens [recurse-limit 2])
+  (bind-generators ([grps (gen-group-list (sub1 recurse-limit))]) (append (list 'parens) grps)))
 
 ;;; (brackets group)
-(define (gen-brackets)
-  (bind-generators ([grps (gen-group-list)]) (append (list 'brackets) grps)))
+(define (gen-brackets [recurse-limit 2])
+  (bind-generators ([grps (gen-group-list (sub1 recurse-limit))]) (append (list 'brackets) grps)))
 
 ;;; (braces group)
-(define (gen-braces)
-  (bind-generators ([grps (gen-group-list)]) (append (list 'braces) grps)))
+(define (gen-braces [recurse-limit 2])
+  (bind-generators ([grps (gen-group-list (sub1 recurse-limit))]) (append (list 'braces) grps)))
 
 ;;; (quotes group)
-(define (gen-quotes [limit 5])
-  (bind-generators ([grps (gen-group-list)]) (append (list 'quotes) grps)))
+(define (gen-quotes [recurse-limit 2])
+  (bind-generators ([grps (gen-group-list (sub1 recurse-limit))]) (append (list 'quotes) grps)))
 
 (set! gen-item
-      (lambda ()
+      (lambda ([recurse-limit 2])
         (choose-mixed (list (delay
                               (gen-atom))
                             (delay
                               (gen-operator))
                             (delay
-                              (gen-parens))
+                              (gen-parens (sub1 recurse-limit)))
                             (delay
-                              (gen-brackets))
+                              (gen-brackets (sub1 recurse-limit)))
                             (delay
-                              (gen-braces))
+                              (gen-braces (sub1 recurse-limit)))
                             (delay
-                              (gen-quotes))))))
+                              (gen-quotes (sub1 recurse-limit)))))))
 
-(set! gen-item-list (lambda () (gen-generator-list gen-item)))
+(set! gen-item-list (lambda ([recurse-limit 5]) (gen-generator-list gen-item recurse-limit)))
 
 ;;; ----------------------
 ;;; Generate groups
@@ -100,84 +100,86 @@
 ;;; (group item* item)
 (define (gen-group1 [recurse-limit 2])
   (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
-                                                [a (gen-item)]
+                                                [a (gen-item (sub1 recurse-limit))]
                                                 [res
                                                  (if recurse?
-                                                     (gen-item-list)
+                                                     (gen-item-list (sub1 recurse-limit))
                                                      (list))])
                    (append (list 'group a) res)))
 
 ;;; (group item* block)
-(define (gen-group2)
-  (bind-generators ([rand (choose-integer 0 1)] [recurse? (= 0 rand)]
-                                                [b (gen-block)]
-                                                [i (gen-item)]
+(define (gen-group2 [recurse-limit 2])
+  (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
+                                                [b (gen-block (sub1 recurse-limit))]
+                                                [i (gen-item (sub1 recurse-limit))]
                                                 [res
                                                  (if recurse?
-                                                     (gen-item-list)
+                                                     (gen-item-list (sub1 recurse-limit))
                                                      (list i))])
                    (append (list 'group) res (list b))))
 
 ;;; (group item* alts)
-(define (gen-group3)
-  (bind-generators ([rand (choose-integer 0 1)] [recurse? (= 0 rand)]
-                                                [a (gen-alts)]
-                                                [i (gen-item)]
+(define (gen-group3 [recurse-limit 2])
+  (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
+                                                [a (gen-alts (sub1 recurse-limit))]
+                                                [i (gen-item (sub1 recurse-limit))]
                                                 [res
                                                  (if recurse?
-                                                     (gen-item-list)
+                                                     (gen-item-list (sub1 recurse-limit))
                                                      (list i))])
                    (append (list 'group) res (list a))))
 
 ;;; (group item* block alts)
-(define (gen-group4)
-  (bind-generators ([rand (choose-integer 0 1)] [recurse? (= 0 rand)]
-                                                [a (gen-alts)]
-                                                [b (gen-block)]
-                                                [i (gen-item)]
+(define (gen-group4 [recurse-limit 2])
+  (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
+                                                [a (gen-alts (sub1 recurse-limit))]
+                                                [b (gen-block (sub1 recurse-limit))]
+                                                [i (gen-item (sub1 recurse-limit))]
                                                 [res
                                                  (if recurse?
-                                                     (gen-item-list)
+                                                     (gen-item-list (sub1 recurse-limit))
                                                      (list i))])
                    (append (list 'group) res (list b a))))
 
 (set! gen-group
-      (lambda ()
+      (lambda ([recurse-limit 5])
         (choose-mixed (list (delay
-                              (gen-group1))
+                              (gen-group1 (sub1 recurse-limit)))
                             (delay
-                              (gen-group2))
+                              (gen-group2 (sub1 recurse-limit)))
                             (delay
-                              (gen-group3))
+                              (gen-group3 (sub1 recurse-limit)))
                             (delay
-                              (gen-group4))))))
+                              (gen-group4 (sub1 recurse-limit)))))))
 
-(set! gen-group-list (lambda () (gen-generator-list gen-group)))
+(set! gen-group-list (lambda ([recurse-limit 5]) (gen-generator-list gen-group recurse-limit)))
 
 ;;; --------------------
 ;;; Gen block
 ;;; --------------------
-(set! gen-block (lambda ([recurse-limit 2])
-      (bind-generators ([rand (choose-integer 0 1)] [recurse?
-                                                     (and (positive? recurse-limit) (= 0 rand))]
-                                                    [res
-                                                     (if recurse?
-                                                         (gen-group-list)
-                                                         (list))])
-                       (append (list 'block) res))))
+(set! gen-block
+      (lambda ([recurse-limit 2])
+        (bind-generators ([rand (choose-integer 0 1)] [recurse?
+                                                       (and (positive? recurse-limit) (= 0 rand))]
+                                                      [res
+                                                       (if recurse?
+                                                           (gen-group-list (sub1 recurse-limit))
+                                                           (list))])
+                         (append (list 'block) res))))
 
-(set! gen-block-list (lambda () (gen-generator-list gen-block)))
+(set! gen-block-list (lambda ([recurse-limit 5]) (gen-generator-list gen-block recurse-limit)))
 
 ;;; --------------------
 ;;; Gen alts
 ;;; --------------------
-(set! gen-alts (lambda ([recurse-limit 2])
-      (bind-generators ([rand (choose-integer 0 1)] [recurse?
-                                                     (and (positive? recurse-limit) (= 0 rand))]
-                                                    [res
-                                                     (if recurse?
-                                                         (gen-block-list)
-                                                         (list))])
-                       (append (list 'alts) res))))
+(set! gen-alts
+      (lambda ([recurse-limit 2])
+        (bind-generators ([rand (choose-integer 0 1)] [recurse?
+                                                       (and (positive? recurse-limit) (= 0 rand))]
+                                                      [res
+                                                       (if recurse?
+                                                           (gen-block-list (sub1 recurse-limit))
+                                                           (list))])
+                         (append (list 'alts) res))))
 
 (print_random_generated_vals gen-group)
