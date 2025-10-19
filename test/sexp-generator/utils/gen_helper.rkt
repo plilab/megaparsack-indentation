@@ -193,4 +193,4 @@
 (define (gen-document [recurse-limit 5])
   (bind-generators ([grps (gen-group-list recurse-limit)]) (append (list 'top) grps)))
 
-(print_random_generated_vals gen-document)
+(pretty_print_random_generated_vals gen-document)
