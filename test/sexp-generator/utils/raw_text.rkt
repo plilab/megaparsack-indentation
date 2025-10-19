@@ -22,10 +22,23 @@
 
   (define (compile-alt-blocks xs indent)
     (map (lambda (item) (compile-alt-block item indent)) xs))
-
+  
+  (define (insert-pipe s)
+    (define n (string-length s))
+    (define (count-leading i)
+      (if (or (>= i n) (not (char-whitespace? (string-ref s i))))
+          i
+          (count-leading (+ i 1))))
+    (let ([i (count-leading 0)])
+      (if (< i n)
+          (string-append (substring s 0 i) "| " (substring s i))
+          s)))
+    
   (define (compile-alt-block item indent)
     (match item
-      [(cons 'block rest) (join-eles (map (lambda (item) (custom-sexp->string item indent)) rest))]
+      [(cons 'block rest)
+       (join-eles (map (lambda (item) (insert-pipe (custom-sexp->string item indent)))
+                       rest))]
       [else (error "Unrecognized alt block")]))
 
   (cond
@@ -43,7 +56,7 @@
         (string-append ":\n"
                        (join-lines (map (lambda (item) (custom-sexp->string item (+ indent 4)))
                                         rest)))]
-       [(cons 'alts rest) (join-alt-eles (compile-alt-blocks rest (+ indent 4)) indent)]
+       [(cons 'alts rest) (join-alt-eles (compile-alt-blocks rest indent) indent)]
        [(cons 'top rest) (join-eles (map (lambda (item) (custom-sexp->string item indent)) rest))]
        [else
         (string-append (indent-str indent)
