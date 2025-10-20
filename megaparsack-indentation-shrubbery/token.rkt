@@ -9,7 +9,7 @@
   lex-shrubbery)
 
 (define-tokens basic-tokens (bytestring string plainident identifier keyword number operator boolean void))
-(define-empty-tokens punct-tokens (line-continuation comment colon newline bar))
+(define-empty-tokens punct-tokens (line-continuation comment colon newline bar semicolon left-paren right-paren left-bracket right-bracket left-brace right-brace quote))
 
 (define-lex-abbrevs
   [plainident (:: (:or alphabetic #\_) (:* (:or alphabetic numeric #\_)))]
@@ -30,6 +30,7 @@
   [usoctal (:or octal #\_)]
   [bit (:or #\0 #\1)]
   [usbit (:or bit #\_)]
+
 
   [nonneg (:: decimal (:* usdecimal))]
 
@@ -126,6 +127,15 @@
     ["#false"
      (token-boolean #f)]
 
+    [#\; (token-semicolon)]
+    [#\( (token-left-paren)]
+    [#\) (token-right-paren)]
+    [#\{ (token-left-brace)]
+    [#\} (token-right-brace)]
+    [#\[ (token-left-bracket)]
+    [#\] (token-right-bracket)]
+    [#\' (token-quote)]
+
     ;;; Numbers
     [(:or float integer fraction)
      (token-number (string->number (remove-underscores lexeme)))]
@@ -169,8 +179,7 @@
     [(:- whitespace #\newline)
      (return-without-pos (shrubbery-lexer input-port))]))
 
-(define (lex-shrubbery str)
-  (define in (open-input-string str))
+(define (lex-shrubbery in)
   (port-count-lines! in)
   (let loop ([v (shrubbery-lexer in)])
     (cond [(void? (position-token-token v)) (loop (shrubbery-lexer in))]

@@ -1,4 +1,4 @@
-- [ ] How do we get the indentation level of a stream character? Possible ideas
+- [x] How do we get the indentation level of a stream character? Possible ideas
     - 3) Modify stream to have tuples of char and int
         - Similar to `indentation`
         - Downside is that we either have to resolve indentationState in the
@@ -18,7 +18,7 @@
           maybe we can create custom combinators which introspect source
           location.
         - I don't know if this is possible yet.
-- [ ] Where do I actually call updateIndentation?
+- [x] Where do I actually call updateIndentation?
     - After every parse? That sounds cumbersome. Not having the monad
       transformer is annoying.
     - I get the feeling that there's no way round custom combinators, but it
