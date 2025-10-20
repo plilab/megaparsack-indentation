@@ -22,7 +22,7 @@
 
   (define (compile-alt-blocks xs indent)
     (map (lambda (item) (compile-alt-block item indent)) xs))
-  
+
   (define (insert-pipe s)
     (define n (string-length s))
     (define (count-leading i)
@@ -33,12 +33,11 @@
       (if (< i n)
           (string-append (substring s 0 i) "| " (substring s i))
           s)))
-    
+
   (define (compile-alt-block item indent)
     (match item
       [(cons 'block rest)
-       (join-eles (map (lambda (item) (insert-pipe (custom-sexp->string item indent)))
-                       rest))]
+       (join-eles (map (lambda (item) (insert-pipe (custom-sexp->string item indent))) rest))]
       [else (error "Unrecognized alt block")]))
 
   (cond
@@ -66,10 +65,7 @@
 (define (print_custom_sexp sexp)
   (displayln (custom-sexp->string sexp)))
 
-;;; Small tests
-(print_custom_sexp (list 'group "let" "m" (list 'op '=) "m" (list 'op '*) "n"))
-(displayln "")
-
+;;; Small test cases
 (print_custom_sexp (list 'group
                          "let"
                          "m"
@@ -91,9 +87,6 @@
                     (list 'parens (list 'group "n" (list 'op '+&) "^4 = " (list 'op '+&) "v")))
               (list 'group "v"))))
 
-(print_custom_sexp grp-test)
-(displayln "")
-
 (define alt-test
   (list 'group
         "if"
@@ -103,10 +96,7 @@
         (list 'alts
               (list 'block (list 'group (list 'op '@) "same"))
               (list 'block (list 'group (list 'op '@) "different")))))
-
-(print_custom_sexp alt-test)
-(displayln "")
-
+  
 (define complex-test
   (list 'group
         "fun"
@@ -130,4 +120,14 @@
                                                   "fib"
                                                   (list 'parens
                                                         (list 'group "n" (list 'op '-) 2)))))))))))
-(print_custom_sexp complex-test)
+
+(define (main)
+  (print_custom_sexp complex-test)
+  (displayln "")
+  (print_custom_sexp alt-test)
+  (newline)
+  (print_custom_sexp grp-test)
+  (newline)
+  (print_custom_sexp (list 'group "let" "m" (list 'op '=) "m" (list 'op '*) "n")))
+
+(module+ main (main))
