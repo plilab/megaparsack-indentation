@@ -24,55 +24,42 @@
   (choose-string char-gen size))
 
 (define (gen-variable)
-  (choose-mixed 
-    (list 
-        (delay (gen-string-fixed 1))
-        (delay (gen-string-fixed 2))
-        (delay (gen-string-fixed 3))
-        (delay (gen-string-fixed 4)))))
+  (choose-mixed (list (delay
+                        (gen-string-fixed 1))
+                      (delay
+                        (gen-string-fixed 2))
+                      (delay
+                        (gen-string-fixed 3))
+                      (delay
+                        (gen-string-fixed 4)))))
 
 (define (gen-operator)
-    (choose-one-of (list '+ '- '* '/ '= '==))
-)
+  (choose-one-of (list '+ '- '* '/ '= '==)))
 
 ;;; Test for binop
-(define (gen-binop) (
-    bind-generators
-    (
-        [op1 (gen-variable)]
-        [op2 (gen-variable)]
-        [binop (gen-operator)]
-    )
-    (list op1 binop op2)
-))
-
+(define (gen-binop)
+  (bind-generators ([op1 (gen-variable)] [op2 (gen-variable)] [binop (gen-operator)])
+                   (list op1 binop op2)))
 
 (define (gen-operator2)
-  (bind-generators 
-    ([a (choose-one-of (list '+ '- '* '/ '= '==))])
-    (list 'op a)
-))
-
+  (bind-generators ([a (choose-one-of (list '+ '- '* '/ '= '==))]) (list 'op a)))
 
 (struct foo (a b) #:transparent)
 ; choose-foo creates a generator that produces a foo such that
 ;   foo-a is an integer?
 ;   foo-b is (or/c foo? #f)
 (define (choose-foo [recurse-limit 13])
-  (bind-generators
-   ([rand (choose-integer 0 1)]
-    [recurse? (and (positive? recurse-limit)
-                   (= 0 rand))]
-    [a (choose-integer 0 9)]
-    [b (if recurse?
-           (choose-foo (sub1 recurse-limit))
-           #f)])
-   (foo a b)))
+  (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
+                                                [a (choose-integer 0 9)]
+                                                [b
+                                                 (if recurse?
+                                                     (choose-foo (sub1 recurse-limit))
+                                                     #f)])
+                   (foo a b)))
 
 ;;; For debugging
 (define (print_random_generated_vals gen-generator [n 10])
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (displayln ele) #t))))
-
 
 (define (store_random_generated_vals gen-generator [n 10])
   (generate (gen:list gen-generator n)))

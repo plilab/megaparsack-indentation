@@ -11,6 +11,4 @@
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (displayln ele) #t))))
 
 (define (pretty_print_random_generated_vals gen-generator [n 10])
-  (with-test-count n (quickcheck (property ([ele (gen-generator)]) (print_custom_sexp ele) #t)))
-)
-
+  (with-test-count n (quickcheck (property ([ele (gen-generator)]) (print_custom_sexp ele) #t))))

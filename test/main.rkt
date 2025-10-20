@@ -28,14 +28,13 @@
   (parse-result! (shrubbery-parser code)))
 
 ;;; Small tests to make sure api works
-(define one_piece_example (
-  read-file-into-string 
-  (string->path "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\corpus\\demo_mini.rhm")
-))
+(define one_piece_example
+  (read-file-into-string
+   (string->path
+    "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\corpus\\demo_mini.rhm")))
 (display one_piece_example)
 (newline)
 (display (call_self_defined_parser one_piece_example))
-
 
 (test-begin
   (let ([code_xs (map read-file-into-string all_paths)])
@@ -43,4 +42,3 @@
                 (check-sexps-equal? (call_self_defined_parser code)
                                     (syntax->datum (parse-string-self-defined code))))
               code_xs)))
-

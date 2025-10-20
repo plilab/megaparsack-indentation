@@ -6,8 +6,7 @@
          gen-group
          gen-document
          gen-block
-         gen-alts
-)
+         gen-alts)
 
 ;;; -------------------------
 ;;; Helper generators
