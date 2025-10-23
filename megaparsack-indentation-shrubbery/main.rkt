@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require (except-in racket/base do))
+(require racket/format)
 (require data/monad)
 (require data/applicative)
 (require megaparsack)
@@ -8,24 +9,36 @@
 (require megaparsack-indentation)
 
 (require "token.rkt")
+(require "lex.rkt")
 
 (provide shrubbery-parser
          document/p)
 
+(define (syntax-box-indentation box)
+  (add1 (srcloc-column (syntax-box-srcloc box))))
+
+(define ((make-box-indentation-error state) box)
+  (define token (syntax-box-datum box))
+  (define indentation (syntax-box-indentation box))
+  (format "Token ~a at ~a" token (make-indentation-error state indentation)))
+
+(define (ind/p parser)
+  (indent/p (syntax-box/p parser) syntax-box-indentation make-box-indentation-error))
+ 
+
 (define operator/p
-  (indent/p (do [operator <- (token/p 'operator)] (pure (list 'op operator)))))
+  (do [operator <- (ind/p (token/p 'operator))] (pure (list 'op operator))))
 
 (define atom/p
   (label/p "atom"
-    (indent/p
-      (or/p
-        (token/p 'identifier)
-        (token/p 'keyword)
-        (token/p 'number)
-        (token/p 'string)
-        (token/p 'boolean)
-        (token/p 'void)
-        operator/p))))
+    (ind/p (or/p
+            (token/p 'identifier)
+            (token/p 'keyword)
+            (token/p 'number)
+            (token/p 'string)
+            (token/p 'boolean)
+            (token/p 'void)
+            operator/p))))
 
 (define line-continuation/p
   (token/p 'line-continuation))
@@ -36,6 +49,9 @@
 (define newlines/p
   (many/p (token/p 'newline)))
 
+(define newline/p
+  (token/p 'newline))
+
 ;; Ask if we want to have continuations parsed with * local indentation
 (define group-line-with-continuation
   (do
@@ -43,15 +59,16 @@
     [continuations <- (local-indentation/p '* (many/p (do line-continuation/p group-line)))]
     (pure (apply append first-line continuations))))
 
-
 (define group-fragment
   (do
     [first-line-with-continuation <- group-line-with-continuation]
-    [operator-continuations <- (many/p
-                                 (try/p (do
-                                          [op <- (indent/p operator/p)]
-                                          [operator-line-with-continuations <- group-line-with-continuation]
-                                          (pure (cons op operator-line-with-continuations)))))]
+    [operator-continuations <- (local-indentation/p '>
+                                 (many/p
+                                    (try/p (do
+                                            (many/p newline/p)
+                                            [op <- (absolute-indentation/p operator/p)]
+                                            [operator-line-with-continuations <- group-line-with-continuation]
+                                            (pure (cons op operator-line-with-continuations))))))]
     (pure (apply append first-line-with-continuation operator-continuations))))
 
 (define group/p
@@ -80,8 +97,7 @@
 ;; https://docs.racket-lang.org/shrubbery/group-and-block.html are the same thing?
 (define document/p
   (do
-    newlines/p
-    [groups <- (many+/p (absolute-indentation/p group/p) #:sep newlines/p)]
+    [groups <- (many+/p (do (noncommittal/p newlines/p) (absolute-indentation/p group/p)))]
     newlines/p
     eof/p
     (pure (cons 'multi groups))))
@@ -97,19 +113,18 @@
     [alts <- (many+/p
                (absolute-indentation/p
                  (many+/p (try/p (do
-                                  (indent/p (token/p 'bar))
+                                  (ind/p (token/p 'bar))
                                   [block <- block/p]
                                   newlines/p
                                   (pure block))))))]
     (pure (cons 'alts (apply append alts)))))
 
-;; top-level
-;; | a | b | c
-;; | d | e | f
-
 (define (shrubbery-parser str)
   (let ([in (open-input-string str)])
     (parse-tokens document/p (lex-shrubbery in))))
+
+(module+ main
+  (display (map (lambda (x) (list (token-name x) (token-value x))) (lex-all (current-input-port) (lambda (tok val) (displayln (~a tok " " val)))))))
 
 (module+ test
   (require data/either)

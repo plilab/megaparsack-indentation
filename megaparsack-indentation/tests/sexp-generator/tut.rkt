@@ -24,34 +24,34 @@
   (choose-string char-gen size))
 
 (define (gen-variable)
-  (choose-mixed 
-    (list 
-        (delay (gen-string-fixed 1))
-        (delay (gen-string-fixed 2))
-        (delay (gen-string-fixed 3))
-        (delay (gen-string-fixed 4)))))
+  (choose-mixed
+   (list
+    (delay (gen-string-fixed 1))
+    (delay (gen-string-fixed 2))
+    (delay (gen-string-fixed 3))
+    (delay (gen-string-fixed 4)))))
 
 (define (gen-operator)
-    (choose-one-of (list '+ '- '* '/ '= '==))
-)
+  (choose-one-of (list '+ '- '* '/ '= '==)))
+
 
 ;;; Test for binop
 (define (gen-binop) (
-    bind-generators
-    (
-        [op1 (gen-variable)]
-        [op2 (gen-variable)]
-        [binop (gen-operator)]
-    )
-    (list op1 binop op2)
-))
+                     bind-generators
+                     (
+                      [op1 (gen-variable)]
+                      [op2 (gen-variable)]
+                      [binop (gen-operator)])
+
+                     (list op1 binop op2)))
+
 
 
 (define (gen-operator2)
-  (bind-generators 
-    ([a (choose-one-of (list '+ '- '* '/ '= '==))])
-    (list 'op a)
-))
+  (bind-generators
+   ([a (choose-one-of (list '+ '- '* '/ '= '==))])
+   (list 'op a)))
+
 
 
 (struct foo (a b) #:transparent)

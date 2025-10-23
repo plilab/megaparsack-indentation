@@ -3,19 +3,19 @@
 
 (define prog1
   (string-append
-  "~fun add(x, y):\n"
-    "  x + y\n"
+   "~fun add(x, y):\n"
+   "  x + y\n"
    "~fun twice(f, v):\n"
-    "  f(f(v))"
-))
+   "  f(f(v))"))
+
 
 (define prog1_2
   (string-append
-  "fun add(x, y):\n"
-    "  x + y\n"
+   "fun add(x, y):\n"
+   "  x + y\n"
    "fun twp(f, v):\n"
-    "  f(f(v))"
-))
+   "  f(f(v))"))
+
 
 (define prog2
   (string-append

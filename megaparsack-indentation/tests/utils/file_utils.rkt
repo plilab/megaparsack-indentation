@@ -7,8 +7,7 @@
          corpus_path
          local_file
          is_valid_shrubbery?
-         process-file
-         main)
+         process-file)
 
 (define/contract (is_valid_shrubbery? s)
   (-> string? boolean?)

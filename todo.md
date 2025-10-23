@@ -1,0 +1,11 @@
+- Test code
+    - Bigger problems
+        - [ ] Errors on first failure
+        - [ ] No information on tests passing or failing
+        - [ ] No storing of failed tests/printing out path of tests
+        - [ ] No granular test running
+    - Smaller problems
+        - [ ] 
+- Testing
+    - [ ] Smaller tests for our subset
+        - Maybe edit from the corpus we have

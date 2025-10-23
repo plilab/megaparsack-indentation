@@ -74,8 +74,8 @@
   (error "not implemented"))
 
 ;;; (group item* block alts)
-(define (gen-group4 [recurse-limit 5] (error "not implemented"))
-  )
+(define (gen-group4 [recurse-limit 5] (error "not implemented")))
+
 
 (define (gen-group)
   (choose-mixed (list (delay
