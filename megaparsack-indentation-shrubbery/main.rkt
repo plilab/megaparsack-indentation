@@ -89,7 +89,7 @@
 (define block/p
   (local-indentation/p '>
     (do
-      [groups <- (many/p (absolute-indentation/p (try/p (do [group <- group/p] newlines/p (pure group)))))]
+      [groups <- (many/p (absolute-indentation/p (try/p (do newlines/p group/p))))]
       (pure (cons 'block groups)))))
 
 (define alts/p
@@ -98,7 +98,6 @@
                (absolute-indentation/p
                  (many+/p (try/p (do
                                   (indent/p (token/p 'bar))
-                                  newlines/p
                                   [block <- block/p]
                                   newlines/p
                                   (pure block))))))]

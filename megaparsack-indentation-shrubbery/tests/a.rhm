@@ -1,0 +1,35 @@
+#lang shrubbery
+a
+|
+  b :«c; d» | f
+
+b: «c; d»
+| c
+
+a b (c
+, d)
+
+c d [e, f]
+
+g h 'i;
+     j'
+
+a(
+ b, d
+,      c)
+
+a | «
+b:
+ « c; c» | d
+
+c; d» | d
+
+a b c:
+  ()
+
+a
+| b | c
+| d
+
+a | b : c | d
+  | e

@@ -1,3 +1,6 @@
+- [ ] Lexer corner case
+    - 1+2 is 1 plus 2
+    - 1 +2 is 1 followed by 2
 - [x] How do we get the indentation level of a stream character? Possible ideas
     - 3) Modify stream to have tuples of char and int
         - Similar to `indentation`
