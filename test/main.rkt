@@ -9,15 +9,6 @@
 (require megaparsack/text)
 (require megaparsack-indentation)
 
-;;; Small test case
-;;; (define s1 (read-file-into-string local_file))
-
-;;; (test-begin
-;;;   (let ([sexp1 (syntax->datum (parse-string s1))])
-;;;     (check-sexps-equal? sexp1 sexp1)
-;;;     (check-sexps-equal? sexp1 (cdr sexp1))
-;;;     (check-sexps-equal? sexp1 (car (cdr sexp1)))))
-
 ;;; Main loop
 (define-runtime-path corpus_path "minicorpus")
 (define all_paths (read-corpus corpus_path))
@@ -40,6 +31,8 @@
 (display (syntax->datum (parse-string-self-defined one_piece_example)))
 (newline)
 
+
+;;; Main test framework
 (test-begin
   (let ([code_xs (map read-file-into-string all_paths)])
     (for-each (lambda (code)

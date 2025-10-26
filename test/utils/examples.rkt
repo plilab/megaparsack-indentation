@@ -1,6 +1,7 @@
 #lang racket
 (provide prog1 prog1_2 prog2)
 
+;;; Miscelleaneous examples in pure string format
 (define prog1
   (string-append
   "~fun add(x, y):\n"

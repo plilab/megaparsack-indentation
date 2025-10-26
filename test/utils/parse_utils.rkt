@@ -76,7 +76,7 @@
                         (parse-info-message info)
                         (parse-info-location info))))
 
-;;; Debugging
+;;; Small example for debugging
 (define sexp1 (syntax->datum (parse-string-self-defined prog1)))
 (define sexp2 (syntax->datum (parse-string-self-defined prog1_2)))
 (module+ main
