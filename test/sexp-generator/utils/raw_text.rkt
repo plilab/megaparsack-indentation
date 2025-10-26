@@ -6,7 +6,7 @@
 (require racket/match)
 (provide print_custom_sexp)
 ;;; This aim to convert a parsed sexp back into raw string
-
+;;; Unfortunately, this implementation is errorneous
 (define (custom-sexp->string sexp [indent 0])
   (define (indent-str n)
     (make-string n #\space))
