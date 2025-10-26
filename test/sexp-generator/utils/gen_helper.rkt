@@ -12,11 +12,12 @@
 ;;; Helper generators
 ;;; -------------------------
 
-(define (gen-num [min-num 0] [max-num 999])
-  (choose-integer min-num max-num))
+(define (gen-num [min-num #\0] [max-num #\9])
+  (define char-gen (choose-char min-num max-num))
+  (choose-symbol char-gen 4))
 
 (define (gen-string-fixed size [char-gen (choose-char #\a #\z)])
-  (choose-string char-gen size))
+  (choose-symbol char-gen size))
 
 (define (gen-name)
   (choose-mixed (list (delay
@@ -195,6 +196,6 @@
 ;;; Generate documents
 
 (define (gen-document [recurse-limit 10])
-  (bind-generators ([grps (gen-group-list recurse-limit)]) (append (list 'top) grps)))
+  (bind-generators ([grps (gen-group-list recurse-limit)]) (append (list 'multi) grps)))
 
 (print_random_generated_vals gen-document)

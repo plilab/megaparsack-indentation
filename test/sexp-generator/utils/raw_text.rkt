@@ -96,7 +96,7 @@
         (list 'alts
               (list 'block (list 'group (list 'op '@) "same"))
               (list 'block (list 'group (list 'op '@) "different")))))
-  
+
 (define complex-test
   (list 'group
         "fun"
@@ -121,6 +121,8 @@
                                                   (list 'parens
                                                         (list 'group "n" (list 'op '-) 2)))))))))))
 
+
+
 (define (main)
   (print_custom_sexp complex-test)
   (displayln "")
@@ -129,5 +131,5 @@
   (print_custom_sexp grp-test)
   (newline)
   (print_custom_sexp (list 'group "let" "m" (list 'op '=) "m" (list 'op '*) "n")))
-
-(module+ main (main))
+(module+ main
+  (main))

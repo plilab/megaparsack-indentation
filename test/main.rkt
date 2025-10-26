@@ -36,6 +36,8 @@
 (test-begin
   (let ([code_xs (map read-file-into-string all_paths)])
     (for-each (lambda (code)
+                (display code)
+                (newline)
                 (check-sexps-equal? (call_self_defined_parser code)
                                     (syntax->datum (parse-string-self-defined code))))
               code_xs)))
