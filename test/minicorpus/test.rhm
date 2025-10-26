@@ -1,0 +1,34 @@
+    a b c d
+
+    a b c d \
+e f g h
+
+    a b c d
+      + e f g h
+
+    a b c d:
+        e f g h
+
+    a
+    | b
+      c
+
+    a
+    | b:
+        d
+        | c
+
+    a b:
+        d
+        c
+
+    a b : d
+          c
+
+    a
+    | d
+    | c
+
+    a
+    | b | c
+    | d

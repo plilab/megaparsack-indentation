@@ -19,7 +19,7 @@
 ;;;     (check-sexps-equal? sexp1 (car (cdr sexp1)))))
 
 ;;; Main loop
-(define-runtime-path corpus_path "corpus")
+(define-runtime-path corpus_path "minicorpus")
 (define all_paths (read-corpus corpus_path))
 (define code_xs (map read-file-into-string all_paths))
 
@@ -31,7 +31,7 @@
 (define one_piece_example
   (read-file-into-string
    (string->path
-    "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\corpus\\demo_mini.rhm")))
+    "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\minicorpus\\test.rhm")))
 (display one_piece_example)
 (newline)
 (display (call_self_defined_parser one_piece_example))
