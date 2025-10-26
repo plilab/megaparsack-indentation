@@ -19,7 +19,9 @@
 ;;; Racket shrubbery API to parse the program
 (define/contract (parse-string-self-defined s)
   (-> string? syntax?)
-  (with-handlers ([exn:fail? (lambda (exn) (printf "Parse error: ~a\n" (exn-message exn)))])
+  (with-handlers ([exn:fail? (lambda (exn)
+                               (printf "Parse error: ~a\n" (exn-message exn))
+                               (syntax '()))])
     (define in (open-input-string s))
     (parse-all in)))
 
@@ -42,6 +44,11 @@
 ;;; Self-defined S-exps comparison
 (define/contract (compare-sexps a b path)
   (-> sexp? sexp? list? parse-info/c)
+  (display a)
+  (newline)
+  (display b)
+  (newline)
+  (newline)
   (cond
     [(equal? a b) (parse-info success success_msg '())]
     [(and (pair? a) (pair? b))
@@ -72,6 +79,6 @@
 ;;; Debugging
 (define sexp1 (syntax->datum (parse-string-self-defined prog1)))
 (define sexp2 (syntax->datum (parse-string-self-defined prog1_2)))
-(define info (compare-sexps sexp1 sexp2 '()))
 (module+ main
+  (define info (compare-sexps sexp1 sexp2 '()))
   (extract-sexp-diff sexp1 (parse-info-location info)))

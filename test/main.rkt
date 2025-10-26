@@ -23,18 +23,22 @@
 (define all_paths (read-corpus corpus_path))
 (define code_xs (map read-file-into-string all_paths))
 
-;;; (display (car code_xs))
 (define (call_self_defined_parser code)
-  (parse-result! (shrubbery-parser code)))
+  (with-handlers ([exn:fail? (lambda (exn)
+                               (printf "Parse error: ~a\n" (exn-message exn))
+                               (syntax->datum (syntax '())))])
+    (parse-result! (shrubbery-parser code))))
 
 ;;; Small tests to make sure api works
 (define one_piece_example
   (read-file-into-string
    (string->path
-    "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\minicorpus\\test.rhm")))
-(display one_piece_example)
+    "E:\\School-Work-5-Y3S1\\CP3106\\megaparsack-indentation\\test\\minicorpus\\fail.rhm")))
 (newline)
 (display (call_self_defined_parser one_piece_example))
+(newline)
+(display (syntax->datum (parse-string-self-defined one_piece_example)))
+(newline)
 
 (test-begin
   (let ([code_xs (map read-file-into-string all_paths)])
