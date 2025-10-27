@@ -1,17 +1,23 @@
 #lang racket
 (require quickcheck)
+(require shrubbery)
+(require shrubbery/parse)
+(require shrubbery/property)
 (require shrubbery/write)
 (require shrubbery/print)
-(require "./raw_text.rkt")
-(require "./syntax_translate.rkt")
 
-(provide print_random_generated_vals
-         pretty_print_random_generated_vals)
+(provide pretty_print_random_generated_vals)
 
-(define (print_random_generated_vals gen-generator [n 500])
-  (with-test-count
-   n
-   (quickcheck (property ([ele (gen-generator)]) (displayln (custom-sexp-syntax-translate ele)) #t))))
+(define (pretty_print_sexp s)
+  (define test-port (open-output-string))
+  (write-shrubbery s (current-output-port) #:pretty? #t #:armor? #f #:prefer-multiline? #t)
+  ;;; Verify the s exp; will fails if it does not work
+  (write-shrubbery s test-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
+  (define out-str (get-output-string test-port))
+  (define in-port (open-input-string out-str))
+  (parse-all in-port)
+  (newline)
+  (newline))
 
 (define (pretty_print_random_generated_vals gen-generator [n 10])
-  (with-test-count n (quickcheck (property ([ele (gen-generator)]) (print_custom_sexp ele) #t))))
+  (with-test-count n (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp ele) #t))))

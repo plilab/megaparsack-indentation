@@ -1,7 +1,6 @@
 #lang racket
 (require quickcheck)
 (require "./utils.rkt")
-(require "./raw_text.rkt")
 (provide gen-item
          gen-group
          gen-document
@@ -198,4 +197,4 @@
 (define (gen-document [recurse-limit 10])
   (bind-generators ([grps (gen-group-list recurse-limit)]) (append (list 'multi) grps)))
 
-(print_random_generated_vals gen-document)
+(pretty_print_random_generated_vals gen-document)
