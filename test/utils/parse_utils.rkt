@@ -1,5 +1,6 @@
 #lang racket
 (require racket/syntax)
+(require racket/gui)
 (require syntax/parse)
 (require shrubbery)
 (require shrubbery/parse)
@@ -42,13 +43,16 @@
   (or (symbol? x) (number? x) (string? x) (null? x) (pair? x)))
 
 ;;; Self-defined S-exps comparison
-(define/contract (compare-sexps a b path)
-  (-> sexp? sexp? list? parse-info/c)
-  (display a)
-  (newline)
-  (display b)
-  (newline)
-  (newline)
+(define/contract (compare-sexps a b path [print? #t])
+  (->* (sexp? sexp? list?) (boolean?) parse-info/c)
+  (if print?
+      (begin
+        (display "actual: ")
+        (displayln a)
+        (display "expected: ")
+        (displayln b)
+        (newline))
+      (display "finished comparison"))
   (cond
     [(equal? a b) (parse-info success success_msg '())]
     [(and (pair? a) (pair? b))
@@ -67,9 +71,9 @@
     [else (error "Invalid path element" (car path))]))
 
 ;;; RackUnit methods for parse-info
-(define/contract (check-sexps-equal? a b)
-  (-> sexp? sexp? void?)
-  (define info (compare-sexps a b '()))
+(define/contract (check-sexps-equal? a b [print? #t])
+  (->* (sexp? sexp?) (boolean?) void?)
+  (define info (compare-sexps a b '() print?))
   (check-equal? (parse-info-symbol info)
                 success
                 (format "S-exp comparision failed: ~a \n Path to get to element: ~a"
