@@ -151,7 +151,7 @@
 (set! gen-group
       (lambda ([recurse-limit 5])
         (if (<= recurse-limit 0)
-            (bind-generators ([atm (gen-atom)]) (append (list 'block) (list atm)))
+            (bind-generators ([atm (gen-atom)]) (list 'block atm))
             (choose-mixed (list (delay
                                   (gen-group1 (sub1 recurse-limit)))
                                 (delay

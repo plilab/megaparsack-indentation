@@ -8,8 +8,7 @@
 
 (provide pretty_print_random_generated_vals)
 
-(define (pretty_print_sexp s)
-  (define test-port (open-output-string))
+(define (pretty_print_sexp s [test-port (open-output-string)])
   (write-shrubbery s (current-output-port) #:pretty? #t #:armor? #f #:prefer-multiline? #t)
   ;;; Verify the s exp; will fails if it does not work
   (write-shrubbery s test-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
@@ -19,5 +18,7 @@
   (newline)
   (newline))
 
-(define (pretty_print_random_generated_vals gen-generator [n 10])
-  (with-test-count n (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp ele) #t))))
+(define (pretty_print_random_generated_vals gen-generator [test-port (open-output-string)] [n 100])
+  (with-test-count
+   n
+   (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp ele test-port) #t))))
