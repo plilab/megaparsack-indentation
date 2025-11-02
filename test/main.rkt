@@ -18,9 +18,9 @@
 (define-runtime-path failed_corpus_path "fail_corpus")
 (define failed_paths (read-corpus failed_corpus_path))
 
-;;; Define parts for large files
-(define-runtime-path large_corpus_path "large_corpus")
-(define large_paths (read-corpus large_corpus_path))
+;;; Define parts for random files
+(define-runtime-path random_corpus_path "sample_rangen")
+(define random_paths (read-corpus random_corpus_path))
 
 ;;; Define parts on external files
 (define-runtime-path external_corpus_path "corpus")
@@ -60,14 +60,14 @@
                     code_xs)))
 
       ;;; Test cases for large test cases
-      ;;; (test-case "Large test cases"
-      ;;;   (let ([code_xs (map read-file-into-string large_paths)])
-      ;;;     (for-each (lambda (code)
-      ;;;                 (newline)
-      ;;;                 (check-sexps-equal? (call_self_defined_parser code)
-      ;;;                                     (syntax->datum (parse-string-self-defined code))
-      ;;;                                     #f))
-      ;;;               code_xs)))
+      (test-case "Random test cases"
+        (let ([code_xs (map read-file-into-string random_paths)])
+          (for-each (lambda (code)
+                      (newline)
+                      (check-sexps-equal? (call_self_defined_parser code)
+                                          (syntax->datum (parse-string-self-defined code))
+                                          #f))
+                    code_xs)))
       
       ;;; Test cases for external corpus - This will fail given current implementation of parser.
       (test-case "External test case"

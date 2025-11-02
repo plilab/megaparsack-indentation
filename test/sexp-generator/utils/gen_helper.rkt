@@ -31,7 +31,7 @@
                         (gen-string-fixed 5)))))
 
 (define (gen-generator-list generator [recurse-limit 2])
-  (bind-generators ([rand (choose-integer 0 1)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
+  (bind-generators ([rand (choose-integer 0 10)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
                                                 [head (generator (sub1 recurse-limit))]
                                                 [tail
                                                  (if recurse?
