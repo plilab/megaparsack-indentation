@@ -197,4 +197,7 @@
 (define (gen-document [recurse-limit 10])
   (bind-generators ([grps (gen-group-list recurse-limit)]) (append (list 'multi) grps)))
 
-(pretty_print_random_generated_vals gen-document)
+;;; Small demo to print shurbbery syntax generator
+(module+ main
+  (pretty_print_random_generated_vals gen-document)
+)

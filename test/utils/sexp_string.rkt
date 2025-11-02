@@ -5,6 +5,7 @@
 
 ;;; Generate expected sexp ast and print it into file with extension .sexp
 
+;;; Define the relative paths of the repository of rhm code that wants to return sexp
 (define-runtime-path corpus_path "../corpus")
 
 (define (print_expected_sexp)
@@ -20,4 +21,6 @@
        #:exists 'replace))
    all_paths))
 
-(print_expected_sexp)
+(module+ main 
+  (print_expected_sexp)
+)

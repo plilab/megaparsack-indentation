@@ -39,7 +39,7 @@
     (test-suite "Test harness for parser"
       #:before (lambda () (displayln "Start testing"))
       #:after (lambda () (displayln "Finish testing"))
-      ;;; Test cases for small succesful test cases
+      ;;; Test cases for small succesful test cases - cases where parser should succeed
       (test-begin
         (let ([code_xs (map read-file-into-string all_paths)])
           (for-each (lambda (code)
@@ -49,7 +49,7 @@
                                           (syntax->datum (parse-string-self-defined code))))
                     code_xs)))
 
-      ;;; Test cases for failed test cases
+      ;;; Test cases for failed test cases - cases where parser should fail
       (test-begin
         (let ([code_xs (map read-file-into-string failed_paths)])
           (for-each (lambda (code)
@@ -69,7 +69,7 @@
       ;;;                                     #f))
       ;;;               code_xs)))
       
-      ;;; Test cases for external corpus
+      ;;; Test cases for external corpus - This will fail given current implementation of parser.
       (test-case "External test case"
         (let ([code_xs (map read-file-into-string external_paths)])
           (for-each (lambda (code)

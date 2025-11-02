@@ -2,6 +2,7 @@
 (require racket/runtime-path)
 (require "./file_utils.rkt")
 
+;;; This is to generated files with programs of large size for load testing.
 (define-runtime-path corpus_path "../minicorpus")
 (define-runtime-path out_dir "../large_corpus")
 (define M 10000)
