@@ -6,3 +6,4 @@ compiled/
 /doc/
 experiments/
 large_corpus/
+large_corpus/*
