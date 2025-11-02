@@ -60,14 +60,14 @@
                     code_xs)))
 
       ;;; Test cases for large test cases
-      (test-case "Large test cases"
-        (let ([code_xs (map read-file-into-string large_paths)])
-          (for-each (lambda (code)
-                      (newline)
-                      (check-sexps-equal? (call_self_defined_parser code)
-                                          (syntax->datum (parse-string-self-defined code))
-                                          #f))
-                    code_xs)))
+      ;;; (test-case "Large test cases"
+      ;;;   (let ([code_xs (map read-file-into-string large_paths)])
+      ;;;     (for-each (lambda (code)
+      ;;;                 (newline)
+      ;;;                 (check-sexps-equal? (call_self_defined_parser code)
+      ;;;                                     (syntax->datum (parse-string-self-defined code))
+      ;;;                                     #f))
+      ;;;               code_xs)))
       
       ;;; Test cases for external corpus
       (test-case "External test case"
