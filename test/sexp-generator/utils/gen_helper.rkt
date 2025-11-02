@@ -199,5 +199,5 @@
 
 ;;; Small demo to print shurbbery syntax generator
 (module+ main
-  (pretty_print_random_generated_vals gen-document)
+  (raw_pretty_print_random_generated_vals gen-document)
 )

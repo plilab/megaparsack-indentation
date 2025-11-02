@@ -30,13 +30,6 @@
       (newline))))
 
 (define (pretty_print_sexp_raw s [port cur-output-port])
-  ;;; Attempt to write shrubbery to string first
-  ;;; (define test-port (open-output-string))
-  ;;; (write-shrubbery s test-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
-
-  ;;; (define out-str (get-output-string test-port))
-  ;;; (define in-port (open-input-string out-str))
-  ;;; (parse-all in-port)
   (write-shrubbery s port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
   (newline)
   (newline))
@@ -45,7 +38,7 @@
 (define (pretty_print_random_generated_vals gen-generator [n 25] [port cur-output-port])
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp ele port) #t))))
 
-(define (raw_pretty_print_random_generated_vals gen-generator [n 2500] [port cur-output-port])
+(define (raw_pretty_print_random_generated_vals gen-generator [n 25] [port cur-output-port])
   (with-test-count
    n
    (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp_raw ele port) #t))))
