@@ -10,13 +10,16 @@
 
 (define-runtime-path sample_rangen_path "../sample_rangen")
 
+(define cnt (box 0))
+
 ;;; Output the unverified pretty print - only write back when it can be parsed by default parser
 (define (raw_output_sexp s)
-  (define time_stamp (current-seconds))
+  (define time_stamp (current-milliseconds))
   (define path
     (string-append (path->string sample_rangen_path)
                    "/"
                    (number->string time_stamp)
+                   (number->string (unbox cnt))
                    "_random_unverified.rhm"))
   (define file-port
     (open-output-file path
@@ -26,9 +29,10 @@
                       #:replace-permissions? #t))
   (write-shrubbery s file-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
   (close-output-port file-port)
+  (set-box! cnt (+ 1 (unbox cnt)))
   )
 
-(define (raw_output_random_generated_vals gen-generator [n 10000])
+(define (raw_output_random_generated_vals gen-generator [n 100])
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (raw_output_sexp ele) #t))))
 
 ;;; Output the verified pretty print
@@ -41,7 +45,12 @@
 
   (define time_stamp (current-seconds))
   (define path
-    (string-append (path->string sample_rangen_path) "/" (number->string time_stamp) "_random.rhm"))
+    (string-append 
+      (path->string sample_rangen_path) 
+      "/" 
+      (number->string time_stamp)
+      (number->string (unbox cnt)) 
+      "_random.rhm"))
   (define file-port
     (open-output-file path
                       #:mode 'text
@@ -58,9 +67,11 @@
       (write-shrubbery s file-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
       (newline)
       (newline)))
-  (close-output-port file-port))
+  (close-output-port file-port)
+  (set-box! cnt (+ 1 (unbox cnt)))
+  )
 
-(define (pretty_output_random_generated_vals gen-generator [n 10000])
+(define (pretty_output_random_generated_vals gen-generator [n 100])
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (pretty_output_sexp ele) #t))))
 
 ;;; Main module that actually print the document
