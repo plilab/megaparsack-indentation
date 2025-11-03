@@ -32,6 +32,7 @@
   (set-box! cnt (+ 1 (unbox cnt)))
   )
 
+;;; Utilize the quickcheck test API to print result
 (define (raw_output_random_generated_vals gen-generator [n 100])
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (raw_output_sexp ele) #t))))
 
@@ -71,6 +72,7 @@
   (set-box! cnt (+ 1 (unbox cnt)))
   )
 
+;;; Utilize the quickcheck test API to print result
 (define (pretty_output_random_generated_vals gen-generator [n 100])
   (with-test-count n (quickcheck (property ([ele (gen-generator)]) (pretty_output_sexp ele) #t))))
 

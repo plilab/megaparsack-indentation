@@ -10,10 +10,10 @@ PEXP=./test/utils/sexp_string.rkt
 
 help:
 	@echo "Available make targets:"
-	@echo "  test           - Run the test harness on $(TESTFILES)"
-	@echo "  random_print   - Print a randomly generated program"
-	@echo "  random_gen     - Generate S-expressions and save the default pretty-print shrubbery notation"
-	@echo "  quickcheck     - Run the Quickcheck test"
+	@echo "  test           - Run the test harness on $(TESTFILE)"
+	@echo "  random_print   - Print a randomly generated program using $(RANPRINT)"
+	@echo "  random_gen     - Generate S-expressions and save the default pretty-print shrubbery notation using $(RANGEN)"
+	@echo "  quickcheck     - Run the Quickcheck test on $(RANTEST)"
 	@echo "  print_sexp     - Print S-expression of the corpus (specify corpus in $(PEXP))"
 	@echo "  help           - Show this help message"
 
