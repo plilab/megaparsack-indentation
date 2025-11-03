@@ -1,10 +1,7 @@
 ;;; Utilize the Quickcheck testing API to compare the behavior of parsers
 ;;; Instead of directly printing all the sexps out
 #lang racket
-(require megaparsack-indentation-shrubbery)
-(require megaparsack)
-(require megaparsack/text)
-(require megaparsack-indentation)
+
 (require quickcheck)
 (require rackunit)
 (require rackunit/text-ui)
