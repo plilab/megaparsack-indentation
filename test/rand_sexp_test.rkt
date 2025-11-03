@@ -22,9 +22,10 @@
    (quickcheck
     (property ([ele (gen-document)])
               (write-shrubbery ele str-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
-              (check-sexps-equal? (syntax->datum 
+              (check-sexps-equal? (call_self_defined_parser (get-output-string str-port))
+                                  (syntax->datum 
                                     (parse-all (open-input-string (get-output-string str-port))))
-                                  (call_self_defined_parser (get-output-string str-port)))))))
+                                  )))))
 
 (module+ test
   (rand_test_main)
