@@ -5,10 +5,6 @@
 (require racket/runtime-path)
 (require "./utils/file_utils.rkt")
 (require "./utils/parse_utils.rkt")
-(require megaparsack-indentation-shrubbery)
-(require megaparsack)
-(require megaparsack/text)
-(require megaparsack-indentation)
 
 ;;; Define paths for success files
 (define-runtime-path corpus_path "minicorpus")
@@ -25,13 +21,6 @@
 ;;; Define parts on external files
 (define-runtime-path external_corpus_path "corpus")
 (define external_paths (read-corpus external_corpus_path))
-
-;;; Wrap the shrubbery parser from the
-(define (call_self_defined_parser code)
-  (with-handlers ([exn:fail? (lambda (exn)
-                               (printf "Parse error: ~a\n" (exn-message exn))
-                               (syntax->datum (syntax '())))])
-    (parse-result! (shrubbery-parser code))))
 
 ;;; Main test framework
 (module+ test
@@ -68,7 +57,7 @@
                                           (syntax->datum (parse-string-self-defined code))
                                           #f))
                     code_xs)))
-      
+
       ;;; Test cases for external corpus - This will fail given current implementation of parser.
       (test-case "External test case"
         (let ([code_xs (map read-file-into-string external_paths)])
