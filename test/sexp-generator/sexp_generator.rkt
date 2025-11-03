@@ -48,7 +48,8 @@
                       #:exists 'replace
                       #:permissions #o666
                       #:replace-permissions? #t))
-
+  
+  ;;; Only string that can be parsed by the parse-all functions will be recognized
   (with-handlers ([exn:fail? (lambda (e)
                                (displayln (format "Parse failed: ~a" (exn-message e)))
                                #f)])

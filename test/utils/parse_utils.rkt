@@ -10,12 +10,26 @@
 (require rhombus/parse)
 (require racket/contract)
 (require "./examples.rkt")
+(require megaparsack-indentation-shrubbery)
+(require megaparsack)
+(require megaparsack/text)
+(require megaparsack-indentation)
+
 
 (provide parse-string-self-defined
          parse-info
          compare-sexps
          extract-sexp-diff
-         check-sexps-equal?)
+         check-sexps-equal?
+         call_self_defined_parser
+)
+
+;;; Wraps the self defined parser from the megaparsack library
+(define (call_self_defined_parser code)
+  (with-handlers ([exn:fail? (lambda (exn)
+                               (printf "Parse error: ~a\n" (exn-message exn))
+                               (syntax->datum (syntax '())))])
+    (parse-result! (shrubbery-parser code))))
 
 ;;; Racket shrubbery API to parse the program
 (define/contract (parse-string-self-defined s)
