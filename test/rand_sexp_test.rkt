@@ -12,7 +12,7 @@
 (require "./utils/parse_utils.rkt")
 (require "./sexp-generator/utils/gen_helper.rkt")
 
-(define (rand_test_main [n 100])
+(define (rand_test_main [n 10000])
   (define str-port (open-output-string))
   (with-test-count
    n
