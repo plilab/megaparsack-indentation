@@ -1,0 +1,9 @@
+*~
+\#*
+.\#*
+.DS_Store
+compiled/
+/doc/
+experiments/
+large_corpus/
+large_corpus/*
