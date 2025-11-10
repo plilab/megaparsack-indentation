@@ -25,7 +25,7 @@ Each of the code used for test cases are stored in the files with extension of `
 
 Parsing utility functions are in `test\utils\parse_utils.rkt`. It includes wrappers for calling the custom and default Rhombus which handle the parsing exception gracefully, methods to compare parser-generated S-expressions and keep track of the difference, and contracts and structures for parsing results and errors.
 
-The `test\rand_sexp_test.rkt` provides a script to print S-expressions of the parsed representation of all Rhombus code in the designated path. The script can be run using command `make print_sexp`.
+The `./test/utils/sexp_string.rkt` provides a script to print S-expressions of the parsed representation of all Rhombus code in the designated path. The script can be run using command `make print_sexp`.
 
 The main test harness is in `main.rkt`. A suite of automated test cases is designed to read test cases from various categories of corpus (including successful, failed, random, and external cases). Within each test cases, the code from each file is paresed by default Shrubbery parser and custom parser, and the generated result which denotes the state of parsing and the generated S-exp representation will be compared using utility functions. Discrepencies in the parse result will cause the test case to fail. The testing script can be run using command `make test`
 
