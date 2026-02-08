@@ -105,28 +105,70 @@
                                           (pure (cons op operator-line-with-continuations))))))]
     (pure (apply append first-line-with-continuation operator-continuations))))
 
-(define colon-with-block/p
-  (do (token/p 'block-operator) newlines/p block/p))
+(define (group/p-generator #:is-in-alt is-in-alt)
+  (define colon-with-block/p
+    (do
+        (token/p 'block-operator)
+      (cond
+        [is-in-alt (or/p block-in-alt/p (do newlines/p block/p))]
+        [else (do newlines/p block/p)])))
 
-(define group/p
-  (do
-      [(cons group block) <- (or/p
-                              (do [group <- group-fragment]
-                                [block <- (or/p
-                                           (chain (compose pure list) colon-with-block/p)
-                                           (pure '()))]
-                                (pure `(,group . ,block)))
-                              (do [block <- colon-with-block/p]
-                                (pure `(() . ,block))))]
-    newlines/p
-    [alts <- (or/p
-              (try/p
-               (chain (compose pure list) alts/p))
-              (pure '()))]
-    (pure `(group ,@group ,@block ,@alts))))
+  (or/p
+   ; Group exists
+   (do
+       [group <- group-fragment]
+     (or/p
+
+      ; => Group with empty block and alts
+      (try/p (do (token/p 'block-operator)
+               newlines/p
+               [alts <- alts/p]
+               (pure `(group ,@group ,alts))))
+
+      ; Group and Block exist
+      (do [block <- colon-with-block/p]
+        (or/p
+         ; => Group, Block, and Alt
+         (try/p (do
+                    newlines/p
+                  [alts <- alts/p]
+                  (pure `(group ,@group ,block ,alts))))
+         ; => Group and Block
+         (pure `(group ,@group ,block))))
+
+      ; Group exists but Block doesn't
+      (or/p
+       ; => Group with Alt on another line
+       (try/p (do
+                  newlines/p
+                [alts <- alts/p]
+                (pure `(group ,@group ,alts))))
+       (cond
+         ; => Group
+         [is-in-alt (pure `(group ,@group))]
+         ; => Group with Alt on the same line
+         [else (or/p
+                (try/p (do
+                           [alts <- (local-indentation/p '> alts/p)]
+                         (pure `(group ,@group ,alts))))
+                (pure `(group ,@group)))]))))
+
+   ; Group does not exist
+   (do [block <- colon-with-block/p]
+     (or/p
+      ; => Block and Alts
+      (try/p (do
+                 newlines/p
+               [alts <- alts/p]
+               (pure `(group ,block ,alts))))
+      ; => Block
+      (pure `(group ,block))))))
+
+(define group/p (group/p-generator #:is-in-alt #f))
+(define group-in-alt/p (group/p-generator #:is-in-alt #t))
 
 
-(define (make-opener-closer/p identifier opener closer separator/p)
+(define (make-opener-closer/p identifier opener closer separator/p #:newline-separated [newline-separated #f])
   (do
       (token-string=/p 'opener opener)
     [groups <- (local-indentation/p
@@ -136,7 +178,9 @@
                                             (many/p group/p #:sep (noncommittal/p separator/p)))]
                                 newlines/p
                                 (pure groups))
-                              separator/p))]
+                              (cond
+                                [newline-separated (or/p separator/p void/p)]
+                                [else separator/p])))]
     (local-indentation/p '* (token-string=/p 'closer closer))
     (pure (cons identifier (apply append groups)))))
 
@@ -149,7 +193,6 @@
 (define brackets/p (make-opener-closer/p 'brackets "[" "]" comma/p))
 (define braces/p (make-opener-closer/p 'braces "{" "}" comma/p))
 (define quotes/p (make-opener-closer/p 'quotes "'" "'" semicolon/p))
-(define quotes-disambiguated/p (make-opener-closer/p 'quotes "'«" "»'" semicolon/p))
 
 ;; I don't know enough macros to generate opener-closer/p as succinct as this
 ; (define associations
@@ -166,8 +209,7 @@
    parens/p
    brackets/p
    braces/p
-   quotes/p
-   quotes-disambiguated/p))
+   quotes/p))
 
 ;; The entire document. This always produces one multi constructor.
 ;; This does not parse a #lang line at the beggining of a file. TODO Create
@@ -184,8 +226,16 @@
 (define block/p
   (local-indentation/p '>
                        (do
-                           [groups <- (many/p (try/p (absolute-indentation/p group/p)) #:sep newlines/p)]
-                         (pure (cons 'block groups)))))
+                           [groups <- (many+/p (try/p (absolute-indentation/p group/p)) #:sep newlines/p)]
+                         (pure `(block . ,groups)))))
+
+(define block-in-alt/p
+  (local-indentation/p '>
+                       (do
+                           [leading-group <- (absolute-indentation/p group-in-alt/p)]
+                         newlines/p
+                         [groups <- (many/p (try/p (absolute-indentation/p group/p)) #:sep newlines/p)]
+                         (pure `(block ,leading-group . ,groups)))))
 
 (define alts/p
   (do
@@ -193,7 +243,7 @@
                 (absolute-indentation/p
                  (many+/p (try/p (do
                                      (token/p 'bar-operator)
-                                   [block <- block/p]
+                                   [block <- block-in-alt/p]
                                    newlines/p
                                    (pure block))))))]
     (pure (cons 'alts (apply append alts)))))
@@ -226,6 +276,9 @@
   (require data/either)
   (require rackunit)
 
+  (check-equal? (shrubbery-parser "let dir = match dir.to_string() | \"R\": #'right | \"L\": #'left | \"U\": #'up | \"D\": #'down") (success '(multi (group a (alts (block (group b)) (block (group c)))))) "inline alt")
+  (check-equal? (shrubbery-parser "a | b | c") (success '(multi (group a (alts (block (group b)) (block (group c)))))) "inline alt")
+  (check-equal? (shrubbery-parser "a\n+") (success '(multi (group a) (group (op +)))) "group starting with operator after another group")
   (check-equal? (shrubbery-parser "a b ( a, b, c,\n      d, e, f, )") (success '(multi (parens (group a) (group b) (group c)))) "parens")
   (check-equal? (shrubbery-parser "a") (success '(multi (group a))) "single identifier")
   (check-equal? (shrubbery-parser "a b:\n c") (success '(multi (group a b (block (group c))))) "group with block")
