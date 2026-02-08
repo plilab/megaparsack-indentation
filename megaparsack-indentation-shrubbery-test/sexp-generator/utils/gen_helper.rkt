@@ -14,25 +14,20 @@
 (define (gen-int [min-num 0] [max-num 1000])
   (choose-integer min-num max-num))
 
-
-(define (gen-string-fixed size [char-gen (choose-char #\a #\z)])
-  (choose-symbol char-gen size))
-
-(define (gen-name)
-  (choose-mixed (list (gen-string-fixed 1)
-                      (gen-string-fixed 2)
-                      (gen-string-fixed 3)
-                      (gen-string-fixed 4)
-                      (gen-string-fixed 5))))
+(define (gen-name [max-size 5] [char-gen (choose-char #\a #\z)])
+  (bind-generators
+   ([size (choose-integer 1 max-size)]
+    [symbol (choose-symbol char-gen size)])
+   symbol))
 
 (define (gen-generator-list generator [recurse-limit 2])
   (bind-generators ([rand (choose-integer 0 10)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
-                                                [head (generator (sub1 recurse-limit))]
-                                                [tail
-                                                 (if recurse?
-                                                     (gen-generator-list generator
-                                                                         (sub1 recurse-limit))
-                                                     (list))])
+                                                 [head (generator (sub1 recurse-limit))]
+                                                 [tail
+                                                  (if recurse?
+                                                      (gen-generator-list generator
+                                                                          (sub1 recurse-limit))
+                                                      (list))])
                    (append (list head) tail)))
 
 ;;; --------------------------
@@ -64,14 +59,14 @@
   (bind-generators ([grps (gen-group-list (sub1 recurse-limit))]) (append (list 'quotes) grps)))
 
 (define (gen-item [recurse-limit 2])
-    (if (<= recurse-limit 0)
-        (gen-atom)
-        (choose-mixed (list (gen-atom)
-            (gen-operator)
-            (gen-parens (sub1 recurse-limit))
-            (gen-brackets (sub1 recurse-limit))
-            (gen-braces (sub1 recurse-limit))
-            (gen-quotes (sub1 recurse-limit))))))
+  (if (<= recurse-limit 0)
+      (gen-atom)
+      (choose-mixed (list (gen-atom)
+                          (gen-operator)
+                          (gen-parens (sub1 recurse-limit))
+                          (gen-brackets (sub1 recurse-limit))
+                          (gen-braces (sub1 recurse-limit))
+                          (gen-quotes (sub1 recurse-limit))))))
 
 (define (gen-item-list [recurse-limit 5]) (gen-generator-list gen-item recurse-limit))
 
@@ -124,12 +119,12 @@
                    (append (list 'group) res (list b a))))
 
 (define (gen-group [recurse-limit 5])
-        (if (<= recurse-limit 0)
-            (bind-generators ([atm (gen-atom)]) (list 'block atm))
-            (choose-mixed (list (gen-group1 (sub1 recurse-limit))
-                                (gen-group2 (sub1 recurse-limit))
-                                (gen-group3 (sub1 recurse-limit))
-                                (gen-group4 (sub1 recurse-limit))))))
+  (if (<= recurse-limit 0)
+      (bind-generators ([atm (gen-atom)]) (list 'block atm))
+      (choose-mixed (list (gen-group1 (sub1 recurse-limit))
+                          (gen-group2 (sub1 recurse-limit))
+                          (gen-group3 (sub1 recurse-limit))
+                          (gen-group4 (sub1 recurse-limit))))))
 
 (define (gen-group-list [recurse-limit 5]) (gen-generator-list gen-group recurse-limit))
 
@@ -137,13 +132,13 @@
 ;;; Gen block
 ;;; --------------------
 (define (gen-block [recurse-limit 2])
-        (bind-generators ([rand (choose-integer 0 1)] [recurse? (positive? recurse-limit)]
-                                                      [grp (gen-group (sub1 recurse-limit))]
-                                                      [res
-                                                       (if recurse?
-                                                           (gen-group-list (sub1 recurse-limit))
-                                                           (list grp))])
-                         (append (list 'block) res)))
+  (bind-generators ([rand (choose-integer 0 1)] [recurse? (positive? recurse-limit)]
+                                                [grp (gen-group (sub1 recurse-limit))]
+                                                [res
+                                                 (if recurse?
+                                                     (gen-group-list (sub1 recurse-limit))
+                                                     (list grp))])
+                   (append (list 'block) res)))
 
 (define (gen-block-list [recurse-limit 5]) (gen-generator-list gen-block recurse-limit))
 
@@ -151,13 +146,13 @@
 ;;; Gen alts
 ;;; --------------------
 (define (gen-alts [recurse-limit 2])
-        (bind-generators ([rand (choose-integer 0 1)] [recurse? (positive? recurse-limit)]
-                                                      [grp (gen-block (sub1 recurse-limit))]
-                                                      [res
-                                                       (if recurse?
-                                                           (gen-block-list (sub1 recurse-limit))
-                                                           (list grp))])
-                         (append (list 'alts) res)))
+  (bind-generators ([rand (choose-integer 0 1)] [recurse? (positive? recurse-limit)]
+                                                [grp (gen-block (sub1 recurse-limit))]
+                                                [res
+                                                 (if recurse?
+                                                     (gen-block-list (sub1 recurse-limit))
+                                                     (list grp))])
+                   (append (list 'alts) res)))
 
 ;;; (print_random_generated_vals gen-group)
 ;;; Generate documents
