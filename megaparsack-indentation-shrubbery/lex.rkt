@@ -339,18 +339,18 @@
   (let loop ()
     (define next (peek-char-or-special i))
     (cond
-     [(or (eq? next #\newline)
-          (eq? next #\return))
+      [(or (eq? next #\newline)
+           (eq? next #\return))
        (cond
          [consume-newline?
           (read-char-or-special i)
           (cond
-           [(and (eq? next #\return)
-                 (eq? (peek-char-or-special i) #\newline))
-            (read-char-or-special i)
-            (list #\return #\newline)]
-           [else
-            (list #\newline)])]
+            [(and (eq? next #\return)
+                  (eq? (peek-char-or-special i) #\newline))
+             (read-char-or-special i)
+             (list #\return #\newline)]
+            [else
+             (list #\newline)])]
          [else null])]
       [(eof-object? next)
        null]
@@ -936,8 +936,8 @@
      (let loop ([depth (in-at-openers status)])
        (define ch (peek-char in))
        (cond
-        [(or (eqv? ch #\newline)
-             (eqv? ch #\return))
+         [(or (eqv? ch #\newline)
+              (eqv? ch #\return))
           ;; convert a newline into a separate string input
           (define s (get-output-string o))
           (cond
@@ -1259,7 +1259,7 @@
                     start-line       ; starts as #f, filled in by `lex/status
                     start-column     ; ditto
                     line-advance     ; 0 if the token is within a line
-                    column-advance)) ; size of token in columns within its ending line
+                    column-advance) #:transparent) ; size of token in columns within its ending line
 
 (define (token-e t)
   (syntax-e (token-value t)))

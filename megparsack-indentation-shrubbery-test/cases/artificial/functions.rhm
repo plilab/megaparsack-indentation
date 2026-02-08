@@ -1,0 +1,17 @@
+~fun add(x, y):
+  x + y
+~fun twice(f, v):
+  f(f(v))
+
+
+fun add(x, y):
+  x + y
+fun twp(f, v):
+  f(f(v))
+
+
+fun sum(n):
+  total = 0
+  for i in range(n):
+    total = total + i
+  total

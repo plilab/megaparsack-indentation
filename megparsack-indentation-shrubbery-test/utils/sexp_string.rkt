@@ -5,8 +5,6 @@
 
 (define-runtime-path corpus_path "../corpus")
 
-
-
 (define (print_expected_sexp)
   (define all_paths (read-corpus corpus_path))
   (for-each
@@ -19,6 +17,3 @@
          (pretty-print sexp out))
        #:exists 'replace))
    all_paths))
-
-
-(print_expected_sexp)

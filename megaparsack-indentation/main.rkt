@@ -8,13 +8,12 @@
 (require racket/match)
 (require racket/format)
 (require racket/function)
-(require racket/generic)
 
 (module+ test
   (require rackunit))
 
 (provide
- indent/p
+ gen-indent/p
  update-indentation
  inf-indentation
  inf-indentation?
@@ -24,54 +23,26 @@
  local-token-mode/p
  make-indentation-error)
 
-(define-generics indent
-  (least-indent indent)
-  (indent=? indent other-indent)
-  (indent<? indent other-indent)
-  (indent<=? indent other-indent)
-  (indent>? indent other-indent)
-  (indent>=? indent other-indent)
-  (indent-sub1 indent)
-  #:requires [least-indent indent<=? indent-sub1]
-  #:fast-defaults ([number?
-                    (define indent=? =)
-                    (define indent<? <)
-                    (define indent<=? <=)
-                    (define indent>? >)
-                    (define indent>=? >=)
-                    (define least-indent 0)
-                    (define indent-sub1 sub1)])
-  #:fallbacks [(define/generic i<=? indent<=?)
-               (define (indent<? indent other-indent)
-                 (not (i<=? other-indent indent)))
-               (define (indent=? indent other-indent)
-                 (and (i<=? indent other-indent) (i<=? other-indent indent)))
-               (define (indent>? indent other-indent)
-                 (not (i<=? indent other-indent)))
-               (define (indent>=? indent other-indent)
-                 (i<=? other-indent indent))])
-
 (define inf-indentation
-  'inf-indentation)
+  (gensym "megaparsack-indentation-infinite"))
 
 (define (inf-indentation? a)
   (eq? inf-indentation a))
 
-(define (unbounded-indent? v) (or (indent? v) (inf-indentation? v)))
 
 (define (relation? a)
   (or (eq? '> a)
       (eq? '>= a)
       (eq? '= a)
       (eq? '* a)
-      (and (pair? a) (= (car a) 'const))))
+      (and (pair? a) (eq? (car a) 'const))))
 
 
 ; TODO Implement a gen:custom-write interface on this to make the errors look nicer
 (struct indent-state (lower upper absmode relation)
   #:transparent
   #:guard (lambda (lower upper absmode relation _name)
-            (unless (or (inf-indentation? upper) (lower . indent<=? . upper))
+            (unless (or (inf-indentation? upper) (lower . <= . upper))
               (error "Lower bound is greater than upper bound"))
             (values lower upper absmode relation)))
 
@@ -80,11 +51,11 @@
   (match-define (indent-state lower upper absmode relation) state)
   (define rel (cond [absmode '=] [else relation]))
   (match rel
-    [(cons 'const x) (indent=? x indent)]
+    [(cons 'const x) (= x indent)]
     ['* #t]
-    ['> (indent>? indent lower)]
-    ['>= (indent>=? indent lower)]
-    ['= (and (indent<=? lower indent) (or (inf-indentation? upper) (indent<=? indent upper)))]))
+    ['> (> indent lower)]
+    ['>= (>= indent lower)]
+    ['= (and (<= lower indent) (or (inf-indentation? upper) (<= indent upper)))]))
 
 (define (make-indentation-error state indentation)
   (match-define (indent-state lower upper absmode relation) state)
@@ -113,10 +84,9 @@
 ;; indentation and the interal relation.
 (define (update-indentation state indent)
   ;; Finds the minimum between the indentation and the potentially infinite upper indent
-  (define/contract (upper-update indent upper)
-    (-> indent? unbounded-indent? indent?)
+  (define (upper-update indent upper)
     (cond
-      [(or (inf-indentation? upper) (indent<=? indent upper)) indent]
+      [(or (inf-indentation? upper) (<= indent upper)) indent]
       [else upper]))
 
   (match-define (indent-state _ upper absmode relation) state)
@@ -125,9 +95,9 @@
                     [else relation]))
   (define updated
     (match rel
-      [(cons 'const x) [(indent=? x indent) state]]
+      [(cons 'const x) [(= x indent) state]]
       ['* state]
-      ['> (struct-copy indent-state state [upper (upper-update (indent-sub1 indent) upper)])]
+      ['> (struct-copy indent-state state [upper (upper-update (sub1 indent) upper)])]
       ['>= (struct-copy indent-state state [upper (upper-update indent upper)])]
       ['= (struct-copy indent-state state [lower indent] [upper indent])]))
   (struct-copy indent-state updated [absmode #f]))
@@ -136,7 +106,7 @@
 
 (define indent-parameter (make-parser-parameter (indent-state 0 inf-indentation #f '>)))
 
-(define (indent/p parser accessor fail)
+(define ((gen-indent/p accessor fail) parser)
   (do
       [previous-state <- (indent-parameter)]
     [box <- (guard/p parser
@@ -146,7 +116,7 @@
     (define box-indentation (accessor box))
     (define new-state (update-indentation previous-state box-indentation))
     (indent-parameter new-state)
-    (pure (syntax-box-datum box))))
+    (pure box)))
 
 
 (define/contract (local-token-mode/p relation-transformer parser)
@@ -256,19 +226,19 @@
        [x <- (or/p
               (local-token-mode/p (const '=)
                                   (do
-                                      (indent/p (char/p #\())
+                                      (gen-indent/p (char/p #\())
                                     whitespace/p
                                     [x <- (local-indentation/p '> bracket-parser)]
                                     whitespace/p
-                                    (indent/p (char/p #\)))
+                                    (gen-indent/p (char/p #\)))
                                     (pure (list 'parens x))))
               (local-token-mode/p (const '>=)
                                   (do
-                                      (indent/p (char/p #\[))
+                                      (gen-indent/p (char/p #\[))
                                     whitespace/p
                                     [x <- (local-indentation/p '> bracket-parser)]
                                     whitespace/p
-                                    (indent/p (char/p #\]))
+                                    (gen-indent/p (char/p #\]))
                                     (pure (list 'bracket x)))))]
        whitespace/p
        (pure x))))

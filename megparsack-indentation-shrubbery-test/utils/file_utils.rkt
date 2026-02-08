@@ -1,11 +1,8 @@
 #lang racket
-(require racket/port)
 (require racket/runtime-path)
 
 (provide read-file-into-string
          read-corpus
-         corpus_path
-         local_file
          is_valid_shrubbery?
          process-file)
 
@@ -28,16 +25,13 @@
   (process-file (file->string path)))
 
 
-;;; Debugging
-(define-runtime-path corpus_path "../corpus")
-(define all_paths (read-corpus corpus_path))
-(define local_file (car all_paths))
-(define content (read-file-into-string local_file))
-
-(define/contract (main)
-  (-> void?)
-  (display content))
-
 ;;; Local tests
 (module+ main
+  (define/contract (main)
+    (-> void?)
+    (display content))
+  (define-runtime-path corpus_path "../corpus")
+  (define all_paths (read-corpus corpus_path))
+  (define local_file (car all_paths))
+  (define content (read-file-into-string local_file))
   (main))

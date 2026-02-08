@@ -1,14 +1,7 @@
 #lang racket
-(require racket/syntax)
-(require syntax/parse)
-(require shrubbery)
 (require shrubbery/parse)
-(require shrubbery/property)
-(require shrubbery/print)
 (require rackunit)
-(require rhombus/parse)
 (require racket/contract)
-(require "./examples.rkt")
 
 (provide parse-string-self-defined
          parse-info
@@ -70,8 +63,8 @@
                         (parse-info-location info))))
 
 ;;; Debugging
-(define sexp1 (syntax->datum (parse-string-self-defined prog1)))
-(define sexp2 (syntax->datum (parse-string-self-defined prog1_2)))
-(define info (compare-sexps sexp1 sexp2 '()))
 (module+ main
+  (define sexp1 '(a b c d e f (g h)))
+  (define sexp2 '(a b c d e f g h))
+  (define info (compare-sexps sexp1 sexp2 '()))
   (extract-sexp-diff sexp1 (parse-info-location info)))
