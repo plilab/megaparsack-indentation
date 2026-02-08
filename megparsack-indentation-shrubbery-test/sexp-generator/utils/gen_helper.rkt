@@ -16,8 +16,8 @@
   (choose-symbol char-gen 4))
 
 (define (gen-int [min-num 0] [max-num 1000])
-  (choose-integer min-num max-num)
-)
+  (choose-integer min-num max-num))
+
 
 (define (gen-string-fixed size [char-gen (choose-char #\a #\z)])
   (choose-symbol char-gen size))
@@ -203,5 +203,4 @@
 
 ;;; Small demo to print shurbbery syntax generator
 (module+ main
-  (pretty_print_random_generated_vals gen-document)
-)
+  (pretty_print_random_generated_vals gen-document))

@@ -40,5 +40,5 @@
 
 (define (raw_pretty_print_random_generated_vals gen-generator [n 25] [port cur-output-port])
   (with-test-count
-   n
-   (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp_raw ele port) #t))))
+      n
+    (quickcheck (property ([ele (gen-generator)]) (pretty_print_sexp_raw ele port) #t))))

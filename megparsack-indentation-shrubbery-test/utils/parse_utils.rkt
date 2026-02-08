@@ -1,42 +1,18 @@
 #lang racket
-(require racket/syntax)
-(require racket/gui)
-(require syntax/parse)
-(require shrubbery)
 (require shrubbery/parse)
-(require shrubbery/property)
-(require shrubbery/print)
 (require rackunit)
-(require rhombus/parse)
 (require racket/contract)
-(require "./examples.rkt")
-(require megaparsack-indentation-shrubbery)
-(require megaparsack)
-(require megaparsack/text)
-(require megaparsack-indentation)
-
 
 (provide parse-string-self-defined
          parse-info
          compare-sexps
          extract-sexp-diff
-         check-sexps-equal?
-         call_self_defined_parser
-)
-
-;;; Wraps the self defined parser from the megaparsack library
-(define (call_self_defined_parser code)
-  (with-handlers ([exn:fail? (lambda (exn)
-                               (printf "Parse error: ~a\n" (exn-message exn))
-                               (syntax->datum (syntax '())))])
-    (parse-result! (shrubbery-parser code))))
+         check-sexps-equal?)
 
 ;;; Racket shrubbery API to parse the program
 (define/contract (parse-string-self-defined s)
   (-> string? syntax?)
-  (with-handlers ([exn:fail? (lambda (exn)
-                               (printf "Parse error: ~a\n" (exn-message exn))
-                               (syntax '()))])
+  (with-handlers ([exn:fail? (lambda (exn) (printf "Parse error: ~a\n" (exn-message exn)))])
     (define in (open-input-string s))
     (parse-all in)))
 
@@ -57,16 +33,8 @@
   (or (symbol? x) (number? x) (string? x) (null? x) (pair? x)))
 
 ;;; Self-defined S-exps comparison
-(define/contract (compare-sexps a b path [print? #t])
-  (->* (sexp? sexp? list?) (boolean?) parse-info/c)
-  (if print?
-      (begin
-        (display "actual: ")
-        (displayln a)
-        (display "expected: ")
-        (displayln b)
-        (newline))
-      (display "finished comparison"))
+(define/contract (compare-sexps a b path)
+  (-> sexp? sexp? list? parse-info/c)
   (cond
     [(equal? a b) (parse-info success success_msg '())]
     [(and (pair? a) (pair? b))
@@ -85,18 +53,18 @@
     [else (error "Invalid path element" (car path))]))
 
 ;;; RackUnit methods for parse-info
-(define/contract (check-sexps-equal? a b [print? #t])
-  (->* (sexp? sexp?) (boolean?) void?)
-  (define info (compare-sexps a b '() print?))
+(define/contract (check-sexps-equal? a b)
+  (-> sexp? sexp? void?)
+  (define info (compare-sexps a b '()))
   (check-equal? (parse-info-symbol info)
                 success
                 (format "S-exp comparision failed: ~a \n Path to get to element: ~a"
                         (parse-info-message info)
                         (parse-info-location info))))
 
-;;; Small example for debugging
-(define sexp1 (syntax->datum (parse-string-self-defined prog1)))
-(define sexp2 (syntax->datum (parse-string-self-defined prog1_2)))
+;;; Debugging
 (module+ main
+  (define sexp1 '(a b c d e f (g h)))
+  (define sexp2 '(a b c d e f g h))
   (define info (compare-sexps sexp1 sexp2 '()))
   (extract-sexp-diff sexp1 (parse-info-location info)))

@@ -29,8 +29,8 @@
                       #:replace-permissions? #t))
   (write-shrubbery s file-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
   (close-output-port file-port)
-  (set-box! cnt (+ 1 (unbox cnt)))
-  )
+  (set-box! cnt (+ 1 (unbox cnt))))
+  
 
 ;;; Utilize the quickcheck test API to print result
 (define (raw_output_random_generated_vals gen-generator [n 100])
@@ -69,8 +69,8 @@
       (newline)
       (newline)))
   (close-output-port file-port)
-  (set-box! cnt (+ 1 (unbox cnt)))
-  )
+  (set-box! cnt (+ 1 (unbox cnt))))
+  
 
 ;;; Utilize the quickcheck test API to print result
 (define (pretty_output_random_generated_vals gen-generator [n 100])

@@ -1,4 +1,8 @@
-- [ ] Lexer corner case
+- [ ] Do we use whatever tab-handling scheme that Rhombus has?
+    - [ ] Investigate all the corner cases
+        - [ ] Tab as not leading indentation
+        - [ ] Mix of tab and space
+- [x] Lexer corner case (we're adapting Rhombus's lexer)
     - 1+2 is 1 plus 2
     - 1 +2 is 1 followed by 2
 - [x] How do we get the indentation level of a stream character? Possible ideas
