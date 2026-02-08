@@ -39,17 +39,6 @@
                                                      (list))])
                    (append (list head) tail)))
 
-;;; -------------------------
-;;; Forward declarations
-;;; -------------------------
-(define gen-item null)
-(define gen-group null)
-(define gen-block null)
-(define gen-alts null)
-(define gen-item-list null)
-(define gen-group-list null)
-(define gen-block-list null)
-
 ;;; --------------------------
 ;;; Generate items
 ;;; --------------------------
@@ -78,18 +67,17 @@
 (define (gen-quotes [recurse-limit 2])
   (bind-generators ([grps (gen-group-list (sub1 recurse-limit))]) (append (list 'quotes) grps)))
 
-(set! gen-item
-      (lambda ([recurse-limit 2])
-        (if (<= recurse-limit 0)
-            (gen-atom)
-            (choose-mixed (list (gen-atom)
-                                (gen-operator)
-                                (gen-parens (sub1 recurse-limit))
-                                (gen-brackets (sub1 recurse-limit))
-                                (gen-braces (sub1 recurse-limit))
-                                (gen-quotes (sub1 recurse-limit)))))))
+(define (gen-item [recurse-limit 2])
+    (if (<= recurse-limit 0)
+        (gen-atom)
+        (choose-mixed (list (gen-atom)
+            (gen-operator)
+            (gen-parens (sub1 recurse-limit))
+            (gen-brackets (sub1 recurse-limit))
+            (gen-braces (sub1 recurse-limit))
+            (gen-quotes (sub1 recurse-limit))))))
 
-(set! gen-item-list (lambda ([recurse-limit 5]) (gen-generator-list gen-item recurse-limit)))
+(define (gen-item-list [recurse-limit 5]) (gen-generator-list gen-item recurse-limit))
 
 ;;; ----------------------
 ;;; Generate groups
@@ -139,44 +127,41 @@
                                                      (list i))])
                    (append (list 'group) res (list b a))))
 
-(set! gen-group
-      (lambda ([recurse-limit 5])
+(define (gen-group [recurse-limit 5])
         (if (<= recurse-limit 0)
             (bind-generators ([atm (gen-atom)]) (list 'block atm))
             (choose-mixed (list (gen-group1 (sub1 recurse-limit))
                                 (gen-group2 (sub1 recurse-limit))
                                 (gen-group3 (sub1 recurse-limit))
-                                (gen-group4 (sub1 recurse-limit)))))))
+                                (gen-group4 (sub1 recurse-limit))))))
 
-(set! gen-group-list (lambda ([recurse-limit 5]) (gen-generator-list gen-group recurse-limit)))
+(define (gen-group-list [recurse-limit 5]) (gen-generator-list gen-group recurse-limit))
 
 ;;; --------------------
 ;;; Gen block
 ;;; --------------------
-(set! gen-block
-      (lambda ([recurse-limit 2])
+(define (gen-block [recurse-limit 2])
         (bind-generators ([rand (choose-integer 0 1)] [recurse? (positive? recurse-limit)]
                                                       [grp (gen-group (sub1 recurse-limit))]
                                                       [res
                                                        (if recurse?
                                                            (gen-group-list (sub1 recurse-limit))
                                                            (list grp))])
-                         (append (list 'block) res))))
+                         (append (list 'block) res)))
 
-(set! gen-block-list (lambda ([recurse-limit 5]) (gen-generator-list gen-block recurse-limit)))
+(define (gen-block-list [recurse-limit 5]) (gen-generator-list gen-block recurse-limit))
 
 ;;; --------------------
 ;;; Gen alts
 ;;; --------------------
-(set! gen-alts
-      (lambda ([recurse-limit 2])
+(define (gen-alts [recurse-limit 2])
         (bind-generators ([rand (choose-integer 0 1)] [recurse? (positive? recurse-limit)]
                                                       [grp (gen-block (sub1 recurse-limit))]
                                                       [res
                                                        (if recurse?
                                                            (gen-block-list (sub1 recurse-limit))
                                                            (list grp))])
-                         (append (list 'alts) res))))
+                         (append (list 'alts) res)))
 
 ;;; (print_random_generated_vals gen-group)
 ;;; Generate documents
