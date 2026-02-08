@@ -11,10 +11,6 @@
 ;;; Helper generators
 ;;; -------------------------
 
-(define (gen-num [min-num #\0] [max-num #\9])
-  (define char-gen (choose-char min-num max-num))
-  (choose-symbol char-gen 4))
-
 (define (gen-int [min-num 0] [max-num 1000])
   (choose-integer min-num max-num))
 
