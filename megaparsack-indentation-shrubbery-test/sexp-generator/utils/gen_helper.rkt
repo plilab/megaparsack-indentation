@@ -41,7 +41,9 @@
 
 ;;; (op symbol)
 (define (gen-operator)
-  (bind-generators ([a (choose-one-of (list '+ '- '* '/ '= '==))]) (list 'op a)))
+  (bind-generators
+   ([a (choose-one-of (list '+ '- '* '/ '= '==))])
+   (list 'op a)))
 
 ;;; (parens group)
 (define (gen-parens [recurse-limit 2])
