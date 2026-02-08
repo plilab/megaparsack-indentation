@@ -12,9 +12,6 @@
 ;;; Main loop
 (define-runtime-path cases-path "cases")
 
-;;; (display (car code_xs))
-(define (call_self_defined_parser code)
-  (parse-result! (shrubbery-parser code)))
 
 (define files-to-parse
   (command-line
@@ -26,7 +23,7 @@
    (path->string filename)
    (define code (read-file-into-string filename))
    (define reference-parse (syntax->datum (parse-string-self-defined code)))
-   (define our-parse (call_self_defined_parser code))
+   (define our-parse (call-self-defined-parser code))
    (check-sexps-equal? reference-parse our-parse)))
 
 (define (run-rhombus-compatibility-tests paths)

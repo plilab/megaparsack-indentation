@@ -1,10 +1,10 @@
 RACO=raco
 RACT=racket
-TESTFILE=./test/main.rkt
-RANPRINT=./test/sexp-generator/utils/gen_helper.rkt
-RANGEN=./test/sexp-generator/sexp_generator.rkt
-RANTEST=./test/rand_sexp_test.rkt
-PEXP=./test/utils/sexp_string.rkt
+TESTFILE=./megaparsack-indentation-shrubbery-test/main.rkt
+RANPRINT=./megaparsack-indentation-shrubbery-test/sexp-generator/utils/gen_helper.rkt
+RANGEN=./megaparsack-indentation-shrubbery-test/sexp-generator/sexp_generator.rkt
+RANTEST=./megaparsack-indentation-shrubbery-test/rand_sexp_test.rkt
+PEXP=./megaparsack-indentation-shrubbery-test/utils/sexp_string.rkt
 
 .PHONY: test random_print random_gen print_sexp help quickcheck
 

@@ -2,12 +2,15 @@
 (require shrubbery/parse)
 (require rackunit)
 (require racket/contract)
+(require megaparsack)
+(require megaparsack-indentation-shrubbery)
 
 (provide parse-string-self-defined
          parse-info
          compare-sexps
          extract-sexp-diff
-         check-sexps-equal?)
+         check-sexps-equal?
+         call-self-defined-parser)
 
 ;;; Racket shrubbery API to parse the program
 (define/contract (parse-string-self-defined s)
@@ -15,6 +18,10 @@
   (with-handlers ([exn:fail? (lambda (exn) (printf "Parse error: ~a\n" (exn-message exn)))])
     (define in (open-input-string s))
     (parse-all in)))
+
+;;; (display (car code_xs))
+(define (call-self-defined-parser code)
+  (parse-result! (shrubbery-parser code)))
 
 ;;; Self-defined error message
 (define success 'success)
