@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require (except-in racket/base do))
-(require racket/format)
+(require racket/function)
 (require racket/syntax-srcloc)
 (require data/monad)
 (require data/applicative)
@@ -40,17 +40,17 @@
      (pure (syntax->datum (token-value token))))))
 
 (define (token-pred/p name pred)
-    (define (satisfy-pred token)
-        (and (token? token)
-            (eq? (token-name token) name)
-            (pred (syntax->datum (token-value token)))))
-    (label/p
-       (symbol->string name)
-       (do [token <- (indent/p (satisfy/p satisfy-pred))]
-         (pure (syntax->datum (token-value token))))))
+  (define (satisfy-pred token)
+    (and (token? token)
+         (eq? (token-name token) name)
+         (pred (syntax->datum (token-value token)))))
+  (label/p
+   (symbol->string name)
+   (do [token <- (indent/p (satisfy/p satisfy-pred))]
+     (pure (syntax->datum (token-value token))))))
 
 (define (token-string=/p name str)
-    (token-pred/p name (lambda (x) (string=? x str))))
+  (token-pred/p name (lambda (x) (string=? x str))))
 
 (define (insensitive-token/p name)
   (label/p
@@ -77,10 +77,8 @@
 (define line-continuation/p
   (do (token/p 'continue-operator) newline/p))
 
-
 (define newlines/p
   (noncommittal/p (many/p newline/p)))
-
 
 (define group-line
   (do
@@ -107,24 +105,25 @@
                                           (pure (cons op operator-line-with-continuations))))))]
     (pure (apply append first-line-with-continuation operator-continuations))))
 
+(define colon-with-block/p
+  (do (token/p 'block-operator) newlines/p block/p))
+
 (define group/p
   (do
-      [group <- group-fragment]
-    [block <- (or/p
-               (try/p
-                (do
-                    (token/p 'block-operator)
-                  newlines/p
-                  [block <- block/p]
-                  (pure (list block))))
-               (do void/p (pure '())))]
+      [(cons group block) <- (or/p
+                              (do [group <- group-fragment]
+                                [block <- (or/p
+                                           (chain (compose pure list) colon-with-block/p)
+                                           (pure '()))]
+                                (pure `(,group . ,block)))
+                              (do [block <- colon-with-block/p]
+                                (pure `(() . ,block))))]
+    newlines/p
     [alts <- (or/p
               (try/p
-               (do newlines/p
-                 [alts <- alts/p]
-                 (pure (list alts))))
-              (do void/p (pure '())))]
-    (pure (cons 'group (append group block alts)))))
+               (chain (compose pure list) alts/p))
+              (pure '()))]
+    (pure `(group ,@group ,@block ,@alts))))
 
 
 (define (make-opener-closer/p identifier opener closer separator/p)
@@ -199,15 +198,19 @@
                                    (pure block))))))]
     (pure (cons 'alts (apply append alts)))))
 
-(define (whitespace-or-comment-token? token)
-  (and (token? token)
-       (or (and (eq? (token-name token) 'whitespace) (not (eq? #\newline (string-last (token-e token)))))
-        (eq? (token-name token) 'comment))))
 
 (define (lex str)
-  (let ([in (open-input-string str)])
-    (port-count-lines! in)
-    (filter (lambda (x) (not (whitespace-or-comment-token? x))) (lex-all in (lambda (token explanation) (raise (cons token explanation)))))))
+  (define (whitespace-or-comment-token? token)
+    (and (token? token)
+         (or (and (eq? (token-name token) 'whitespace) (not (eq? #\newline (string-last (token-e token)))))
+             (eq? (token-name token) 'comment))))
+
+  (define input-port (open-input-string str))
+  (port-count-lines! input-port)
+
+  (filter
+   (lambda (x) (not (whitespace-or-comment-token? x)))
+   (lex-all input-port (lambda (token explanation) (raise (cons token explanation))))))
 
 (define (run-parser-on-lexed parser str)
   (parse-tokens parser (lex str)))
@@ -216,7 +219,7 @@
   (run-parser-on-lexed document/p str))
 
 (module+ main
-  (displayln (lex "#// ( a , b ) [ c , d ] { e , f } 'g; h'")))
+  (displayln (lex "@typeset{Write @bold{\"hello\"}}")))
 
 
 (module+ test
