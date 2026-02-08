@@ -1,17 +1,13 @@
 #lang racket/base
-(require racket/contract)
 (require racket/cmdline)
 (require racket/runtime-path)
 (require racket/match)
 (require "./utils/file_utils.rkt")
 (require "./utils/parse_utils.rkt")
-(require megaparsack-indentation-shrubbery)
-(require megaparsack)
 (require rackunit)
 
 ;;; Main loop
 (define-runtime-path cases-path "cases")
-
 
 (define files-to-parse
   (command-line
@@ -22,9 +18,9 @@
   (test-case
    (path->string filename)
    (define code (read-file-into-string filename))
-   (define reference-parse (syntax->datum (parse-string-self-defined code)))
-   (define our-parse (call-self-defined-parser code))
-   (check-sexps-equal? reference-parse our-parse)))
+   (define reference-parsed-val (syntax->datum (parse-reference code)))
+   (define our-parsed-val (parse-our code))
+   (check-sexp-equal? reference-parsed-val our-parsed-val)))
 
 (define (run-rhombus-compatibility-tests paths)
   (for ([path paths])

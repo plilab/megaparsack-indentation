@@ -30,7 +30,7 @@
   (write-shrubbery s file-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
   (close-output-port file-port)
   (set-box! cnt (+ 1 (unbox cnt))))
-  
+
 
 ;;; Utilize the quickcheck test API to print result
 (define (raw_output_random_generated_vals gen-generator [n 100])
@@ -46,31 +46,29 @@
 
   (define time_stamp (current-seconds))
   (define path
-    (string-append 
-      (path->string sample_rangen_path) 
-      "/" 
-      (number->string time_stamp)
-      (number->string (unbox cnt)) 
-      "_random.rhm"))
+    (string-append
+     (path->string sample_rangen_path)
+     "/"
+     (number->string time_stamp)
+     (number->string (unbox cnt))
+     "_random.rhm"))
   (define file-port
     (open-output-file path
                       #:mode 'text
                       #:exists 'replace
                       #:permissions #o666
                       #:replace-permissions? #t))
-  
+
   ;;; Only string that can be parsed by the parse-all functions will be recognized
   (with-handlers ([exn:fail? (lambda (e)
                                (displayln (format "Parse failed: ~a" (exn-message e)))
                                (close-output-port file-port)
                                #f)])
     (when (parse-all in-port)
-      (write-shrubbery s file-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
-      (newline)
-      (newline)))
+      (write-shrubbery s file-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)))
   (close-output-port file-port)
   (set-box! cnt (+ 1 (unbox cnt))))
-  
+
 
 ;;; Utilize the quickcheck test API to print result
 (define (pretty_output_random_generated_vals gen-generator [n 100])

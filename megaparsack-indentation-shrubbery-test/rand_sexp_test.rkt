@@ -3,11 +3,7 @@
 #lang racket
 
 (require quickcheck)
-(require rackunit)
-(require rackunit/text-ui)
-(require shrubbery)
 (require shrubbery/parse)
-(require shrubbery/property)
 (require shrubbery/write)
 (require "./utils/parse_utils.rkt")
 (require "./sexp-generator/utils/gen_helper.rkt")
@@ -19,9 +15,9 @@
     (quickcheck
      (property ([ele (gen-document)])
                (write-shrubbery ele str-port #:pretty? #t #:armor? #f #:prefer-multiline? #t)
-               (check-sexps-equal? (call-self-defined-parser (get-output-string str-port))
-                                   (syntax->datum
-                                    (parse-all (open-input-string (get-output-string str-port)))))))))
+               (check-sexp-equal? (parse-our (get-output-string str-port))
+                                  (syntax->datum
+                                   (parse-all (open-input-string (get-output-string str-port)))))))))
 
 
 (module+ test

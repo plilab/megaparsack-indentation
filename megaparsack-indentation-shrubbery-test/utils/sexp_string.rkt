@@ -3,14 +3,14 @@
 (require "./file_utils.rkt")
 (require "./parse_utils.rkt")
 
-(define-runtime-path corpus_path "../corpus")
+(define-runtime-path corpus_path "../cases")
 
 (define (print_expected_sexp)
   (define all_paths (read-corpus corpus_path))
   (for-each
    (lambda (app_path)
      (define code (read-file-into-string app_path))
-     (define sexp (syntax->datum (parse-string-self-defined code)))
+     (define sexp (syntax->datum (parse-reference code)))
      (define out-path (string-append (path->string app_path) ".sexp"))
      (call-with-output-file out-path
        (lambda (out)
