@@ -23,16 +23,11 @@
   (choose-symbol char-gen size))
 
 (define (gen-name)
-  (choose-mixed (list (delay
-                        (gen-string-fixed 1))
-                      (delay
-                        (gen-string-fixed 2))
-                      (delay
-                        (gen-string-fixed 3))
-                      (delay
-                        (gen-string-fixed 4))
-                      (delay
-                        (gen-string-fixed 5)))))
+  (choose-mixed (list (gen-string-fixed 1)
+                      (gen-string-fixed 2)
+                      (gen-string-fixed 3)
+                      (gen-string-fixed 4)
+                      (gen-string-fixed 5))))
 
 (define (gen-generator-list generator [recurse-limit 2])
   (bind-generators ([rand (choose-integer 0 10)] [recurse? (and (positive? recurse-limit) (= 0 rand))]
@@ -60,10 +55,8 @@
 ;;; --------------------------
 ;;; atom
 (define (gen-atom)
-  (choose-mixed (list (delay
-                        (gen-int))
-                      (delay
-                        (gen-name)))))
+  (choose-mixed (list (gen-int)
+                      (gen-name))))
 
 ;;; (op symbol)
 (define (gen-operator)
@@ -89,18 +82,12 @@
       (lambda ([recurse-limit 2])
         (if (<= recurse-limit 0)
             (gen-atom)
-            (choose-mixed (list (delay
-                                  (gen-atom))
-                                (delay
-                                  (gen-operator))
-                                (delay
-                                  (gen-parens (sub1 recurse-limit)))
-                                (delay
-                                  (gen-brackets (sub1 recurse-limit)))
-                                (delay
-                                  (gen-braces (sub1 recurse-limit)))
-                                (delay
-                                  (gen-quotes (sub1 recurse-limit))))))))
+            (choose-mixed (list (gen-atom)
+                                (gen-operator)
+                                (gen-parens (sub1 recurse-limit))
+                                (gen-brackets (sub1 recurse-limit))
+                                (gen-braces (sub1 recurse-limit))
+                                (gen-quotes (sub1 recurse-limit)))))))
 
 (set! gen-item-list (lambda ([recurse-limit 5]) (gen-generator-list gen-item recurse-limit)))
 
@@ -156,14 +143,10 @@
       (lambda ([recurse-limit 5])
         (if (<= recurse-limit 0)
             (bind-generators ([atm (gen-atom)]) (list 'block atm))
-            (choose-mixed (list (delay
-                                  (gen-group1 (sub1 recurse-limit)))
-                                (delay
-                                  (gen-group2 (sub1 recurse-limit)))
-                                (delay
-                                  (gen-group3 (sub1 recurse-limit)))
-                                (delay
-                                  (gen-group4 (sub1 recurse-limit))))))))
+            (choose-mixed (list (gen-group1 (sub1 recurse-limit))
+                                (gen-group2 (sub1 recurse-limit))
+                                (gen-group3 (sub1 recurse-limit))
+                                (gen-group4 (sub1 recurse-limit)))))))
 
 (set! gen-group-list (lambda ([recurse-limit 5]) (gen-generator-list gen-group recurse-limit)))
 
