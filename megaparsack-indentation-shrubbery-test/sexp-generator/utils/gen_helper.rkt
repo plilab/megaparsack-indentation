@@ -1,6 +1,5 @@
 #lang racket
 (require quickcheck)
-(require "./utils.rkt")
 (provide gen-item
          gen-group
          gen-document
@@ -189,4 +188,5 @@
 
 ;;; Small demo to print shurbbery syntax generator
 (module+ main
+  (require "./utils.rkt")
   (pretty_print_random_generated_vals gen-document))
