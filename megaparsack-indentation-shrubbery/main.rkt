@@ -6,12 +6,18 @@
 (require data/applicative)
 (require megaparsack)
 (require megaparsack-indentation)
+(require scribble/srcdoc
+         (for-doc racket/base scribble/manual))
 
 (require "lex.rkt")
 (require "utils.rkt")
 
 (provide shrubbery-parser
          document/p)
+
+;;;; -------------------------
+;;;; Indentation library setup
+;;;; -------------------------
 
 (define (parse-tokens parser tokens)
   (define (token->parser-token token)
@@ -31,7 +37,27 @@
    token-indentation
    token-indentation-error))
 
+;;;; ------------------------
+;;;; Token and lexeme parsers
+;;;; ------------------------
 
+;;; Shrubbery is whitespace sensitive. The lexer handles every
+;;; whitespace-senstive ambiguity _except_ for at-notation commands (search
+;;; "command" in https://docs.racket-lang.org/shrubbery/token-parsing.html to
+;;; see its form), which is handled by the parser.
+;;;
+;;; We have token/p and lexeme/p for parsing tokens with whitespace sensitivity
+;;; and insensitivity respectively.
+
+;; token/p: string? -> parser?
+;;
+;; Parameters:
+;;  name - The required token name
+;;
+;; Returns:
+;;  A parser that parses a token if the following are satisfied
+;;  - The token's name is equal to the parameter `name`
+;;  - The token is at a valid indentation
 (define (token/p name)
   (label/p
    (symbol->string name)
@@ -39,12 +65,27 @@
      [token <- (indent/p (satisfy/p (lambda (x) (and (token? x) (eq? (token-name x) name)))))]
      (pure (syntax->datum (token-value token))))))
 
+;; lexeme/p: string? -> parser?
+;;
+;; Acts the same as token/p, but the parser discards any non-newline whitespace
+;; token after the parsed token.
 (define (lexeme/p name)
   (do
     [token <- (token/p name)]
-    (or/p whitespace/p void/p)
+    (or/p non-newline-whitespace/p void/p)
     (pure token)))
 
+;; token-pred/p: string? predicate/c -> boolean?
+;;
+;; Parameters:
+;;  name - The required token name
+;;  pred - The function to test the token value against
+;;
+;; Returns:
+;;  A parser that parses a token if the following are satisfied
+;;  - The token's name is equal to the parameter `name`
+;;  - The token's value passes `pred`
+;;  - The token is at a valid indentation
 (define (token-pred/p name pred)
   (define (satisfy-pred token)
     (and (token? token)
@@ -56,29 +97,48 @@
      [token <- (indent/p (satisfy/p satisfy-pred))]
      (pure (syntax->datum (token-value token))))))
 
+;; lexeme/p: string? -> parser?
+;;
+;; Acts the same as token-pred/p, but the parser discards any non-newline
+;; whitespace token after the parsed token.
 (define (lexeme-pred/p name pred)
   (do
     [token <- (token-pred/p name pred)]
-    (or/p whitespace/p void/p)
+    (or/p non-newline-whitespace/p void/p)
     (pure token)))
 
-(define (lexeme-string=/p name str)
-  (lexeme-pred/p name (lambda (x) (string=? x str))))
+;;;; -------------------------
+;;;; Atomic and literal values
+;;;; -------------------------
 
-(define atom/p
-  (label/p
-   "atom"
-   (or/p (lexeme/p 'identifier)
-         (lexeme/p 'literal)
-         (lexeme/p 'operator))))
+(define identifier/p
+  (lexeme/p 'identifier))
+(define literal/p
+  (lexeme/p 'literal))
+(define operator/p
+  (lexeme/p 'operator))
 
-;; (define (at/p #:inline inline)
-;;   (define command)
-;;   (do
-;;     (lexeme/p 'at)
-;;     (cond
-;;       [inline])))
-  
+(define comma/p
+  (label/p "," (lexeme/p 'comma-operator)))
+(define semicolon/p
+  (label/p ";" (lexeme/p 'semicolon-operator)))
+
+;;; The lexer gives whitespace tokens that with contiguous whitespace
+;;; sequences. The sequenes are broken up into separate tokens after every
+;;; newline.
+;;;
+;;; For example, if we notate spaces with _ and newlines with \n, then parsing
+;;;
+;;; ```
+;;; a_b___\n
+;;; \n
+;;; _a_\n
+;;; ```
+;;;
+;;; gives us the tokens "a" "_" "b" "___\n" "\n" "_" "a" "_\n".
+;;;
+;;; We can disambiguate between the two types by checking if there
+;;; is a newline at the end of the whitespace token.
 
 (define (string-last str)
   (string-ref str (sub1 (string-length str))))
@@ -88,24 +148,111 @@
    "newline"
    (local-indentation/p '* (lexeme-pred/p 'whitespace (lambda (value) (eq? #\newline (string-last value)))))))
 
-(define whitespace/p
-  (label/p
-   "newline"
+(define newlines/p
+  (noncommittal/p (many/p newline/p)))
+
+(define non-newline-whitespace/p
+  (hidden/p
    (local-indentation/p '* (lexeme-pred/p 'whitespace (lambda (value) (not (eq? #\newline (string-last value))))))))
 
 (define line-continuation/p
   (do
     (lexeme/p 'continue-operator) newline/p))
 
-(define newlines/p
-  (noncommittal/p (many/p newline/p)))
+;;;; -------------------
+;;;; Opener-closer pairs
+;;;; -------------------
+
+;; separated-groups/p: (->* (parser?) (#:newline-separated? boolean?) parser?)
+;;
+;; This parser parses a trailing separator if one exists.
+;;
+;; Parameters
+;;  separator/p - Parser used to separate groups
+;;  #:newline-separated? - Whether newlines can be used as separators instead of separator/p (default #f)
+;;
+;; Returns
+;;  A parser that parses groups separated by separator/p (or a newline if
+;;  #:newline-separated? is true). There can be multiple groups on the same
+;;  line, with the lines of the groups being aligned at the first group of each
+;;  line.
+(define (separated-groups/p separator/p #:newline-separated? [is-newline-separated #f])
+ (define line-separator
+   (cond
+     [is-newline-separated (or/p (do newlines/p separator/p newlines/p) (do newline/p newlines/p))]
+     [else (do newlines/p separator/p newlines/p)]))
+
+ (do
+   [groups <- (local-indentation/p
+               '>
+               (sep-end-by/p (do
+                               [groups <- (absolute-indentation/p
+                                           (many/p group/p #:sep (noncommittal/p separator/p)))]
+                               (pure groups))
+                             line-separator))]
+   (pure (apply append groups))))
+
+;; make-opener-closer/p: (->* (string? string? parser?) (#:newline-separated boolean?) parser?)
+;; 
+;; Parses a group of parsers separated by separator/p between an opener and a
+;; closer token. The handling of separator/p and optional newline separation is
+;; done using separated-groups/p.
+;;
+;; Parameters
+;;  identifier - Used to disambiguate output between different opener-closer pairs.
+;;  opener - String to match for the opener token
+;;  closer - String to match for the closer token
+;;  separator/p - Parser used to separate groups
+;;  #:newline-separated? - Whether newlines can be used as separators instead of separator/p (default #f)
+;;
+;; Returns:
+;;  Parser that parses an opener, a list of groups separated by separator/p (or
+;;  newlines if #:newline-separated? is true) and then a closer, and then
+;;  returns a list of groups prefixed by the identifier.
+;;
+;;  For example, parsing `(a, b, c)` with (make-opener-closer/p 'paren "(" ")" comma/p) gives us (parens (group a) (group b) (group c))
+(define (make-opener-closer/p identifier opener closer separator/p #:newline-separated? [is-newline-separated #f])
+  (define (lexeme-string=/p name str)
+    (lexeme-pred/p name (lambda (x) (string=? x str))))
+
+  (do
+    (lexeme-string=/p 'opener opener)
+    newlines/p
+    [groups <- (separated-groups/p separator/p #:newline-separated? is-newline-separated)]
+    newlines/p
+    (local-indentation/p '* (lexeme-string=/p 'closer closer))
+    (pure `(,identifier . ,groups))))
+
+
+(define parens/p (make-opener-closer/p 'parens "(" ")" comma/p))
+(define brackets/p (make-opener-closer/p 'brackets "[" "]" comma/p))
+(define braces/p (make-opener-closer/p 'braces "{" "}" comma/p))
+(define quotes/p (make-opener-closer/p 'quotes "'" "'" semicolon/p #:newline-separated? #t))
+(define quotes-alternate/p (make-opener-closer/p 'quotes "'«" "»'" semicolon/p #:newline-separated? #t))
+
+(define opener-closers/p
+  (or/p
+   parens/p
+   brackets/p
+   braces/p
+   quotes/p
+   quotes-alternate/p))
+
+;; (define (at/p #:inline inline)
+;;   (define command)
+;;   (do
+;;     (lexeme/p 'at)
+;;     (cond
+;;       [inline])))
+
+;;;; Groups
 
 (define group-line
   (do
-    [atoms <- (many+/p (or/p atom/p (delay/p opener-closers/p)))]
+    [atoms <- (many+/p (or/p identifier/p literal/p operator/p (delay/p opener-closers/p)))]
     (pure atoms)))
 
-;; Ask if we want to have continuations parsed with * local indentation
+; TODO: Ask if we want to have continuations parsed with * local indentation
 (define group-line-with-continuation
   (do
     [first-line <- group-line]
@@ -190,58 +337,6 @@
 (define group/p (group/p-generator #:is-in-alt #f))
 (define group-in-alt/p (group/p-generator #:is-in-alt #t))
 
-
-(define (make-opener-closer/p identifier opener closer separator/p #:newline-separated [newline-separated #f])
-  (define line-separator
-    (cond
-      [newline-separated (or/p (do newlines/p separator/p newlines/p) (do newline/p newlines/p))]
-      [else (do newlines/p separator/p newlines/p)]))
-
-  (do
-    (lexeme-string=/p 'opener opener)
-    newlines/p
-    [groups <- (local-indentation/p
-                '>
-                (sep-end-by/p (do
-                                [groups <- (absolute-indentation/p
-                                            (many/p group/p #:sep (noncommittal/p separator/p)))]
-                                (pure groups))
-                              line-separator))]
-    newlines/p
-    (local-indentation/p '* (lexeme-string=/p 'closer closer))
-    (pure (cons identifier (apply append groups)))))
-
-(define comma/p
-  (label/p "," (lexeme/p 'comma-operator)))
-(define semicolon/p
-  (label/p ";" (lexeme/p 'semicolon-operator)))
-
-(define parens/p (make-opener-closer/p 'parens "(" ")" comma/p))
-(define brackets/p (make-opener-closer/p 'brackets "[" "]" comma/p))
-(define braces/p (make-opener-closer/p 'braces "{" "}" comma/p))
-(define quotes/p (make-opener-closer/p 'quotes "'" "'" semicolon/p #:newline-separated #t))
-(define quotes-alternate/p (make-opener-closer/p 'quotes "'«" "»'" semicolon/p #:newline-separated #t))
-
-(define opener-closers/p
-  (or/p
-   parens/p
-   brackets/p
-   braces/p
-   quotes/p
-   quotes-alternate/p))
-
-;; The entire document. This always produces one multi constructor.
-;; This does not parse a #lang line at the beggining of a file. TODO Create
-;; another bigger parser.
-;; TODO Ask if multi in shrubbery output and <document> from
-;; https://docs.racket-lang.org/shrubbery/group-and-block.html are the same thing?
-(define document/p
-  (do
-    newlines/p
-    [groups <- (sep-end-by/p (absolute-indentation/p group/p) newlines/p)]
-    eof/p
-    (pure (cons 'multi groups))))
-
 (define block/p
   (local-indentation/p '>
                        (do
@@ -268,6 +363,23 @@
     (pure (cons 'alts (apply append alts)))))
 
 
+;;;; Document
+
+;; The entire document. This always produces one multi constructor.
+;; This does not parse a #lang line at the beginning of a file. TODO Create
+;; another bigger parser.
+;; TODO Ask if multi in shrubbery output and <document> from
+;; https://docs.racket-lang.org/shrubbery/group-and-block.html are the same thing?
+(define document/p
+  (do
+    newlines/p
+    (or/p non-newline-whitespace/p void/p)
+    [groups <- (sep-end-by/p (absolute-indentation/p group/p) newlines/p)]
+    eof/p
+    (pure (cons 'multi groups))))
+
+;;;; Parsing strings
+
 (define (lex str)
   (define (comment-token? token)
     (and (token? token)
@@ -280,11 +392,8 @@
    (lambda (x) (not (comment-token? x)))
    (lex-all input-port (lambda (token explanation) (raise (cons token explanation))))))
 
-(define (run-parser-on-lexed parser str)
-  (parse-tokens parser (lex str)))
-
 (define (shrubbery-parser str)
-  (run-parser-on-lexed document/p str))
+  (parse-tokens document/p (lex str)))
 
 (module+ main
   (displayln (lex "#{ 1234 }")))
