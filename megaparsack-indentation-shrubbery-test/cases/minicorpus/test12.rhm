@@ -1,0 +1,5 @@
+#lang shrubbery
+
+@(« a b c:
+     d
+     e »)

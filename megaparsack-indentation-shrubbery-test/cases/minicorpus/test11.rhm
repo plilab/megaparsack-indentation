@@ -1,0 +1,43 @@
+#lang shrubbery
+a:
+  a;#//a
+
+a:
+  ;;;
+  ;;;
+  ;a
+
+@~a.b(b
+      c){
+
+c d e}{v d}
+
+'#//;
+ a; #//b'
+
+;;
+
+a b @ab(a b c)|..{a b |..@//{} |..@( c d )
+|..@( e f) }..|
+
+@a{ @b @c @d
+}
+@a{ }
+
+a b @ab{   a
+   @"\n"
+   @(a b)
+d   
+   e
+f
+
+
+g
+
+
+     }
+
+@util.fmt{invalid span: start: @start > end: @end}
+
+@a:
+  b

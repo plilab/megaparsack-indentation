@@ -7,7 +7,7 @@
 (require rackunit)
 
 ;;; Main loop
-(define-runtime-path cases-path "cases")
+(define-runtime-path cases-path "corpus/files")
 
 (define files-to-parse
   (command-line

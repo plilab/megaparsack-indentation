@@ -13,7 +13,7 @@
 
 ;;; Racket shrubbery API to parse the program
 (define (parse-reference s)
-  (with-handlers ([exn:fail? (lambda (exn) (printf "Parse error: ~a\n" (exn-message exn)))])
+  (with-handlers ([exn:fail? (lambda (exn) (eprintf "Parse error: ~a\n" (exn-message exn)))])
     (define in (open-input-string s))
     (parse-all in)))
 
@@ -23,7 +23,7 @@
 (define (check-sexp-equal? actual expected #:actual-marker [actual-marker '#:actual] #:expected-marker [expected-marker '#:expected])
   (with-check-info*
       (list
-       (make-check-message (string-info (pretty-format (sexp-diff actual expected #:old-marker actual-marker #:new-marker expected-marker)))))
+       (make-check-message (string-info (pretty-format (sexp-diff expected actual #:old-marker actual-marker #:new-marker expected-marker)))))
     (lambda ()
       (unless (equal? actual expected)
         (fail-check)))))
