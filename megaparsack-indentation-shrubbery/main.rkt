@@ -1,6 +1,9 @@
 #lang racket/base
 
 (require (except-in racket/base do))
+(require racket/string)
+(require racket/match)
+(require racket/list)
 (require racket/syntax-srcloc)
 (require data/monad)
 (require data/applicative)
@@ -107,6 +110,11 @@
     (or/p non-newline-whitespace/p void/p)
     (pure token)))
 
+(define (lexeme-string=/p name str)
+  (lexeme-pred/p name (lambda (x) (string=? x str))))
+(define (token-string=/p name str)
+  (token-pred/p name (lambda (x) (string=? x str))))
+
 ;;;; -------------------------
 ;;;; Atomic and literal values
 ;;;; -------------------------
@@ -184,13 +192,20 @@
 
  (do
    [groups <- (local-indentation/p
-               '>
+               '*
                (sep-end-by/p (do
                                [groups <- (absolute-indentation/p
                                            (many/p group/p #:sep (noncommittal/p separator/p)))]
                                (pure groups))
                              line-separator))]
    (pure (apply append groups))))
+
+
+(define (opener/p str)
+  (lexeme-string=/p 'opener str))
+
+(define (closer/p str)
+  (lexeme-string=/p 'closer str))
 
 ;; make-opener-closer/p: (->* (string? string? parser?) (#:newline-separated boolean?) parser?)
 ;; 
@@ -200,9 +215,9 @@
 ;;
 ;; Parameters
 ;;  identifier - Used to disambiguate output between different opener-closer pairs.
-;;  opener - String to match for the opener token
-;;  closer - String to match for the closer token
-;;  separator/p - Parser used to separate groups
+;;  opener - Parser to parse the opener
+;;  closer - Parser to parse the closer
+;;  separator - Parser used to separate groups
 ;;  #:newline-separated? - Whether newlines can be used as separators instead of separator/p (default #f)
 ;;
 ;; Returns:
@@ -211,24 +226,27 @@
 ;;  returns a list of groups prefixed by the identifier.
 ;;
 ;;  For example, parsing `(a, b, c)` with (make-opener-closer/p 'paren "(" ")" comma/p) gives us (parens (group a) (group b) (group c))
-(define (make-opener-closer/p identifier opener closer separator/p #:newline-separated? [is-newline-separated #f])
-  (define (lexeme-string=/p name str)
-    (lexeme-pred/p name (lambda (x) (string=? x str))))
+(define (make-opener-closer/p identifier opener closer separator #:newline-separated? [is-newline-separated #f])
 
   (do
-    (lexeme-string=/p 'opener opener)
+    opener
     newlines/p
-    [groups <- (separated-groups/p separator/p #:newline-separated? is-newline-separated)]
+    [groups <- (separated-groups/p separator #:newline-separated? is-newline-separated)]
     newlines/p
-    (local-indentation/p '* (lexeme-string=/p 'closer closer))
+    (local-indentation/p '* closer)
     (pure `(,identifier . ,groups))))
 
 
-(define parens/p (make-opener-closer/p 'parens "(" ")" comma/p))
-(define brackets/p (make-opener-closer/p 'brackets "[" "]" comma/p))
-(define braces/p (make-opener-closer/p 'braces "{" "}" comma/p))
-(define quotes/p (make-opener-closer/p 'quotes "'" "'" semicolon/p #:newline-separated? #t))
-(define quotes-alternate/p (make-opener-closer/p 'quotes "'«" "»'" semicolon/p #:newline-separated? #t))
+(define parens/p (make-opener-closer/p 'parens (opener/p "(") (closer/p ")") comma/p))
+(define brackets/p (make-opener-closer/p 'brackets (opener/p "[") (closer/p "]") comma/p))
+(define braces/p (make-opener-closer/p 'braces (opener/p "{") (closer/p "}") comma/p))
+(define quotes/p (make-opener-closer/p 'quotes (opener/p "'") (closer/p "'") semicolon/p #:newline-separated? #t))
+(define quotes-alternate/p (make-opener-closer/p
+                             'quotes
+                             (do (token-string=/p 'opener "'") (opener/p "«"))
+                             (do (token-string=/p 'closer "»") (closer/p "'"))
+                             semicolon/p
+                             #:newline-separated? #t))
 
 (define opener-closers/p
   (or/p
@@ -238,19 +256,112 @@
    quotes/p
    quotes-alternate/p))
 
-;; (define (at/p #:inline inline)
-;;   (define command)
-;;   (do
-;;     (lexeme/p 'at)
-;;     (cond
-;;       [inline])))
+
+;;;; At-notation
+
+;;; This implementation parses at-notation separately and then splices them in
+;;; a second pass in the group parser.
+
+;;; XXX: Everything using opener/p and closer/p in this section (parens,
+;;; brackets, at-arguments) uses lexeme-string=/p and assumes the braces text
+;;; is immediately after without any whitespace. This works only because the
+;;; lexer emits at's braces texts with separate 'at-opener 'at-closer tags. If
+;;; the lexer changes in such a way that at's braces texts are ambiguous with
+;;; other syntaxes, this **WILL** fail. It would make more sense for the
+;;; closers in this section to work with the token instead of using
+;;; lexeme-string=/p.
+
+(define (process-at-text xs)
+  xs)
+    
+
+;; XXX: This adopts the lexer's assumption that keywords are identifiers. This
+;; is different from whatever the shrubbery specification asks, but it's how the
+;; shrubbery parser is parsing commands.
+(define command/p
+  (or/p
+    (do
+      [leading-identifier <- (token/p 'identifier)]
+      [rest-of-command <- (many/p (do
+                                    [operator <- (noncommittal/p (token/p 'operator))]
+                                    [identifier <- (token/p 'identifier)]
+                                    (pure `(,operator ,identifier))))]
+      (pure `(,leading-identifier . ,(apply append rest-of-command))))
+    (token/p 'literal)
+    parens/p
+    brackets/p))
+(define at-arguments (make-opener-closer/p 'parens (opener/p "(") (closer/p ")") comma/p #:newline-separated? #t))
+
+(define (flip-at-bracket ch)
+  (case ch
+    [(#\<) #\>]
+    [(#\>) #\<]
+    [(#\[) #\]]
+    [(#\]) #\[]
+    [(#\() #\)]
+    [(#\)) #\(]
+    [(#\{) #\}]
+    [(#\}) #\{]
+    [else ch]))
+(define (corresponding-at-closer at-opener)
+  (list->string (map flip-at-bracket (string->list at-opener))))
+(define at-comment
+  (do
+    (token/p 'at-comment)
+    [opener <- (token/p 'at-opener)]
+    (skip-many-until/p (token-string=/p 'at-closer (corresponding-at-closer opener)))))
+
+(define at-text
+  (do
+    (token/p 'at-opener)
+    [contents-or-ats <- (many/p (do (or/p at-comment void/p) (or/p (token/p 'at-content) (delay/p at/p))))]
+    (token/p 'at-closer)
+    (pure `(group (brackets . ,(process-at-text contents-or-ats))))))
+ 
+
+(define at/p
+  (do
+    (token/p 'at)
+    [ans <- (local-indentation/p '* (or/p
+                                     ; Command exists
+                                     (do
+                                       [command <- command/p]
+                                       (or/p
+                                         (do
+                                           ; => @ command ( argument , ... ) braced_text ...
+                                           [arguments <- at-arguments]
+                                           [texts <- (many/p at-text)]
+                                           (pure `(at ,@command ,arguments . ,texts)))
+                                           ; => @ command braced_text braced_text ...
+                                           ; => @ command
+                                         (do
+                                           [texts <- (many/p at-text)]
+                                           (pure `(at ,@command . ,texts)))))
+          
+                                     ; @ braced_text braced_text ...
+                                     (do
+                                       [texts <- (many+/p at-text)]
+                                       (pure `(at . ,texts)))))]
+    (or/p non-newline-whitespace/p void/p)
+    (pure ans)))
+      
+(define (splice-at-notation line)
+  (let loop ([xs line] [acc '()])
+    (if (null? xs)
+        (reverse acc)
+        (match (first xs)
+          [(cons 'at contents) (loop (rest xs) (append (reverse contents) acc))]
+          [x (loop (rest xs) (cons x acc))]))))
+    
+
+
 
 ;;;; Groups
 
 (define group-line
   (do
-    [atoms <- (many+/p (or/p identifier/p literal/p operator/p (delay/p opener-closers/p)))]
-    (pure atoms)))
+    [atoms <- (many+/p (or/p identifier/p literal/p operator/p (delay/p opener-closers/p) at/p))]
+    (pure (splice-at-notation atoms))))
 
 ; TODO: Ask if we want to have continuations parsed with * local indentation
 (define group-line-with-continuation
@@ -259,7 +370,9 @@
     [continuations <- (local-indentation/p '* (many/p (do line-continuation/p group-line)))]
     (pure (apply append first-line continuations))))
 
-(define group-fragment
+;; This is a group with no block and no alts. It is not named anything specific
+;; but is used in multiple places.
+(define group-top-level
   (do
     [first-line-with-continuation <- group-line-with-continuation]
     [operator-continuations <- (local-indentation/p
@@ -272,7 +385,7 @@
                                           (pure (cons op operator-line-with-continuations))))))]
     (pure (apply append first-line-with-continuation operator-continuations))))
 
-(define (group/p-generator #:is-in-alt is-in-alt)
+(define (group/p-generator #:in-alt? is-in-alt)
   (define colon-with-block/p
     (do
       (lexeme/p 'block-operator)
@@ -283,7 +396,7 @@
   (or/p
    ; Group exists
    (do
-     [group <- group-fragment]
+     [group <- group-top-level]
      (or/p
 
       ; => Group with empty block and alts
@@ -334,8 +447,8 @@
       ; => Block
       (pure `(group ,block))))))
 
-(define group/p (group/p-generator #:is-in-alt #f))
-(define group-in-alt/p (group/p-generator #:is-in-alt #t))
+(define group/p (group/p-generator #:in-alt? #f))
+(define group-in-alt/p (group/p-generator #:in-alt? #t))
 
 (define block/p
   (local-indentation/p '>
@@ -361,6 +474,39 @@
                                  newlines/p
                                  (pure block))))))]
     (pure (cons 'alts (apply append alts)))))
+
+
+(define (group-comment #:in-alt? [is-in-alt #f])
+  (define valid-comment-value
+    (or/p
+      semicolon/p
+      (group/p-generator #:in-alt? is-in-alt)))
+  (do
+    (absolute-indentation/p (lexeme/p 'group-comment))
+    (or/p valid-comment-value
+          (do newlines/p (absolute-indentation/p valid-comment-value)))))
+    
+
+;; (define (many-groups/p #:in-alt? [is-in-alt #f])
+;;   (define comment (group-comment #:in-alt? is-in-alt))
+;;   (define separator (noncommittal/p (many+/p semicolon/p)))
+;;   (do
+;;     [group-lines <- (many/p
+;;                      (do
+;;                       [start <- (absolute-indentation/p (or/p
+;;                                                           (do
+;;                                                             (or/p semicolon/p comment)
+;;                                                             (pure '()))
+;;                                                           (do
+;;                                                             [group <- group/p]
+;;                                                             (pure `(,group)))))]
+;;                       (or/p
+;;                         (do separator
+;;                           [remaining-groups <- (sep-end-by/p (local-indentation/p '> (or/p comment (group/p-generator #:in-alt? is-in-alt))) separator)]
+;;                           (pure `(,@start . ,(filter void? remaining-groups))))
+;;                         (pure `(,@start))))
+;;                      #:sep newlines/p)]
+;;     (pure (apply append group-lines))))
 
 
 ;;;; Document
@@ -396,7 +542,7 @@
   (parse-tokens document/p (lex str)))
 
 (module+ main
-  (displayln (lex "#{ 1234 }")))
+  (displayln (lex "#//a")))
 
 
 (module+ test
