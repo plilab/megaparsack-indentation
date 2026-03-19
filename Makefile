@@ -19,7 +19,7 @@ help:
 
 # Command to test harness
 test:
-	$(RACO) test $(TESTFILE)
+	$(RACO) test --errortrace $(TESTFILE)
 
 # Command to compare behavior of parsers on randomly generated code
 quickcheck:

@@ -1,0 +1,54 @@
+#lang shrubbery
+
+@a
+
+@a.b
+
+
+@(a b, c d)
+
+@(a b, c d)(a)
+
+@{
+a}
+
+@{a}
+
+@{}
+
+@{
+}
+
+@{a
+}
+
+@{ }
+
+@{
+
+}
+
+@{
+a
+b
+c
+}
+
+@{
+a
+b
+c}
+
+@{
+  a
+  b
+  c}
+
+@{
+a
+b
+c }
+
+@{c }
+
+@elem{@hspace(1)::=@hspace(1)}

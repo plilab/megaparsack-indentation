@@ -3,6 +3,7 @@
 (require (except-in racket/base do))
 (require racket/match)
 (require racket/list)
+(require racket/string)
 (require racket/syntax-srcloc)
 (require data/monad)
 (require data/applicative)
@@ -194,7 +195,7 @@
                '*
                (sep-end-by/p (do
                                [groups <- (absolute-indentation/p
-                                           (many/p (group/p #:in-alt? #f) #:sep (noncommittal/p separator/p)))]
+                                           (many/p (local-indentation/p '>= (group/p #:in-alt? #f)) #:sep (noncommittal/p separator/p)))]
                                (pure groups))
                              line-separator))]
    (pure (apply append groups))))
@@ -228,7 +229,6 @@
 ;;
 ;;  For example, parsing `(a, b, c)` with (make-opener-closer/p 'paren "(" ")" comma/p) gives us (parens (group a) (group b) (group c))
 (define (make-opener-closer/p identifier opener closer separator #:newline-separated? [is-newline-separated #f])
-
   (do
     opener
     newlines/p
@@ -246,18 +246,18 @@
   (do
     [groups <- (or/p
                  (do
+                   (label/p "'«" (do (noncommittal/p (token-string=/p 'opener "'")) (opener/p "«")))
+                   newlines/p
+                   [groups <- (local-indentation/p '* (many-groups/p))]
+                   newlines/p
+                   (local-indentation/p '* (label/p "'»" (do (token-string=/p 'closer "»") (closer/p "'"))))
+                   (pure groups))
+                 (do
                    (opener/p "'")
                    newlines/p
                    [groups <- (local-indentation/p '* (many-groups/p))]
                    newlines/p
                    (local-indentation/p '* (closer/p "'"))
-                   (pure groups))
-                 (do
-                   (label/p "'«" (do (token-string=/p 'opener "'") (opener/p "«")))
-                   newlines/p
-                   [groups <- (local-indentation/p '* (many-groups/p))]
-                   newlines/p
-                   (local-indentation/p '* (label/p "'»" (do (token-string=/p 'closer "»") (closer/p "'"))))
                    (pure groups)))]
     (pure `(quotes . ,groups))))
 
@@ -286,7 +286,93 @@
 ;;; lexeme-string=/p, but I'm lazy right now.
 
 (define (process-at-text xs)
-  xs)
+  (define (group-by-newlines xs)
+    (let loop ([xs xs] [current '()] [acc '()])
+      (match xs
+        [(or (list (syntax-box "\n" _)) (list (syntax-box "\n" _) (syntax-box (pregexp #px"^[ \t]+$") _)))
+         (if (null? current)
+             (reverse acc)
+             (reverse (cons (reverse current) acc)))]
+        [(list) (reverse (cons (reverse current) acc))]
+        [(list-rest (syntax-box "\n" _) remaining)
+         (loop remaining '() (cons (reverse current) acc))]
+        [(list-rest x remaining)
+         (loop remaining (cons x current) acc)])))
+
+  (define (first-non-whitespace-index str)
+    (or (for/first ([c (in-string str)]
+                    [i (in-naturals)]
+                    #:when (not (char-whitespace? c)))
+         i) 0))
+
+  (define (find-lowest-indentation xs)
+    (define (line-indentation boxes)
+      (if (null? boxes)
+          0
+          (match (first boxes)
+            [(syntax-box (? string? s) (srcloc _ _ column _ _))
+             (+ column (first-non-whitespace-index s))]
+            [_ 0])))
+    (apply
+      min
+      9999
+      (map line-indentation xs)))
+
+  (define (line->groups boxes)
+    (let loop ([xs boxes] [acc '()])
+      (match xs
+        [(list)
+         (reverse acc)]
+        [(list (syntax-box (? string? s) _))
+         (let ([trimmed (string-trim s #:left? #f)])
+           (if (equal? trimmed "")
+               (reverse acc)
+               (reverse `((group ,trimmed) . ,acc))))]
+        [(cons (syntax-box (? string? s) _) xs)
+         (loop xs `((group ,s) . ,acc))]
+        [(cons (syntax-box `(at . ,at) _) xs)
+         (loop xs `((group . ,at) . ,acc))])))
+
+  (define (process-line-first-element str column min-indentation)
+    (match-define (list _ leading-whitespace actual-string) (regexp-match #px"^(\\s*)(.*)" str))
+    (define actual-group (if (equal? "" actual-string) '() `((group ,actual-string))))
+    (cond
+      [(< min-indentation column) `(,@(if (equal? "" leading-whitespace) '() `((group ,leading-whitespace))) ,@actual-group)]
+      [else
+       (define relative-min-indentation (- min-indentation column))
+       (define indentation (string-length leading-whitespace))
+       (cond
+         [(>= relative-min-indentation indentation)
+          actual-group]
+         [else
+           `((group ,(make-string (- indentation relative-min-indentation) #\space)) ,@actual-group)])]))
+
+  (define (process-line boxes min-indentation)
+    (match boxes
+      [(list (syntax-box (? string? s) (srcloc _ _ column _ _)))
+       (process-line-first-element (string-trim s #:left? #f) column min-indentation)]
+      [(list-rest (syntax-box (? string? s) (srcloc _ _ column _ _)) boxes)
+       `(,@(process-line-first-element s column min-indentation)
+          ,@(line->groups boxes))]
+      [_ (line->groups boxes)]))
+
+  (define (process xs)
+    (define lines (group-by-newlines xs))
+    (define min-indentation (find-lowest-indentation lines))
+    (apply append (add-between
+                    (map (lambda (line) (process-line line min-indentation)) lines)
+                    '((group "\n")))))
+
+  (match xs
+    [(list) '()]
+    [(list a)
+     `((group ,(syntax-box-datum a)))]
+    [(list (syntax-box "\n" _) (syntax-box (pregexp #px"[ \t]+") _))
+     '((group "\n"))]
+    [(list-rest (syntax-box "\n" _) left-trimmed)
+     (process left-trimmed)]
+    [_
+     (process xs)]))
     
 
 ;; XXX: This adopts the lexer's assumption that keywords are identifiers. This
@@ -306,7 +392,12 @@
                 parens/p
                 brackets/p)]
       (pure (list val)))))
-(define at-arguments (make-opener-closer/p 'parens (opener/p "(") (closer/p ")") comma/p #:newline-separated? #t))
+(define at-arguments 
+  (do
+    (opener/p "(")
+    [groups <- (separated-groups/p comma/p #:newline-separated? #t)]
+    (closer/p ")")
+    (pure groups)))
 
 (define (flip-at-bracket ch)
   (case ch
@@ -330,7 +421,7 @@
 (define at-text
   (do
     (token/p 'at-opener)
-    [contents-or-ats <- (many/p (do (or/p at-comment void/p) (or/p (token/p 'at-content) (delay/p at/p))))]
+    [contents-or-ats <- (many/p (syntax-box/p (do (or/p at-comment void/p) (or/p (token/p 'at-content) (delay/p at/p)))))]
     (token/p 'at-closer)
     (pure `(group (brackets . ,(process-at-text contents-or-ats))))))
  
@@ -344,15 +435,17 @@
                                        [command <- command/p]
                                        (or/p
                                          (do
-                                           ; => @ command ( argument , ... ) braced_text ...
+                                           ; => @ command ( argument , ... ) braced_text braced_text...
                                            [arguments <- at-arguments]
                                            [texts <- (many/p at-text)]
-                                           (pure `(at ,@command (,@arguments ,@texts))))
-                                           ; => @ command braced_text braced_text ...
-                                           ; => @ command
+                                           (pure `(at ,@command (parens ,@arguments ,@texts))))
+                                         ; => @ command braced_text braced_text ...
                                          (do
-                                           [texts <- (many/p at-text)]
-                                           (pure `(at ,@command (parens ,@texts))))))
+                                           [texts <- (many+/p at-text)]
+                                           (pure `(at ,@command (parens ,@texts))))
+                                         ; => @ command
+                                         (do
+                                           (pure `(at ,@command)))))
           
                                      ; @ braced_text braced_text ...
                                      (do
@@ -496,14 +589,14 @@
     (absolute-indentation/p (lexeme/p 'group-comment))
     (or/p valid-comment-value
           (do newlines/p (absolute-indentation/p valid-comment-value)))))
-    
+
 
 (define (many-groups/p #:in-alt? [is-in-alt #f])
   (define comment (group-comment #:in-alt? is-in-alt))
   (define separator (noncommittal/p (many+/p semicolon/p)))
   (define remaining-groups/p (do
                                [groups-with-voids <- (sep-end-by/p (or/p (local-indentation/p '> comment) (group/p #:in-alt? is-in-alt)) separator)]
-                               (pure (filter void? groups-with-voids))))
+                               (pure (filter (lambda (x) (not (void? x))) groups-with-voids))))
   (do
     [lines <- (many/p
                 (try/p (do
@@ -538,7 +631,7 @@
   (define separator (noncommittal/p (many+/p semicolon/p)))
   (define remaining-groups/p (do
                                [groups-with-voids <- (sep-end-by/p (or/p (local-indentation/p '> comment) (group/p #:in-alt? is-in-alt)) separator)]
-                               (pure (filter void? groups-with-voids))))
+                               (pure (filter (lambda (x) (not (void? x))) groups-with-voids))))
   (define trim/p (many/p (or/p semicolon/p comment)))
 
   (or/p
@@ -584,6 +677,7 @@
          (eq? (token-name token) 'comment)))
 
   (define input-port (open-input-string str))
+  ;; port-count-lines! assumes that a tab is 8 columns wide
   (port-count-lines! input-port)
 
   (filter

@@ -32,10 +32,13 @@ d
 f
 
 
+
 g
 
 
      }
+
+@(a b)
 
 @util.fmt{invalid span: start: @start > end: @end}
 

@@ -14,9 +14,6 @@
 
 (provide
  gen-indent/p
- update-indentation
- inf-indentation
- inf-indentation?
  absolute-indentation/p
  local-absolute-indentation/p
  local-indentation/p
@@ -24,7 +21,7 @@
  make-indentation-error)
 
 (define inf-indentation
-  (gensym "megaparsack-indentation-infinite"))
+  (string->uninterned-symbol "megaparsack-indentation:infinite"))
 
 (define (inf-indentation? a)
   (eq? inf-indentation a))
