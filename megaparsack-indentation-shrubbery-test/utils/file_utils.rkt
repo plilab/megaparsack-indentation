@@ -1,18 +1,7 @@
 #lang racket
-(require racket/runtime-path)
 
-(provide read-file-into-string
-         read-corpus
-         is_valid_shrubbery?
-         process-file)
-
-(define/contract (is_valid_shrubbery? s)
-  (-> string? boolean?)
-  (not (string-prefix? s "#lang")))
-
-(define/contract (process-file s)
-  (-> string? string?)
-  (let ([str_xs (string-split s "\n")]) (string-join (filter is_valid_shrubbery? str_xs) "\n")))
+(provide skip-lang-prefix!
+         read-corpus)
 
 (define/contract (read-corpus dir)
   (-> path? (listof path?))
@@ -20,18 +9,13 @@
              #:when (regexp-match? #rx"\\.rhm$" f))
     f))
 
-(define/contract (read-file-into-string path)
-  (-> path? string?)
-  (process-file (file->string path)))
-
-
-;;; Local tests
-(module+ main
-  (define/contract (main)
-    (-> void?)
-    (display content))
-  (define-runtime-path corpus_path "../corpus")
-  (define all_paths (read-corpus corpus_path))
-  (define local_file (car all_paths))
-  (define content (read-file-into-string local_file))
-  (main))
+(define (skip-lang-prefix! port)
+  ;; This pattern skips:
+  ;; 1. An optional shebang line
+  ;; 2. Any combination of whitespace, line comments (;), and block comments (#|...|#)
+  ;; 3. The #lang line itself
+  (define pattern 
+    #px"^(?:#![^\r\n]*\r?\n)?(?:\\s+|;[^\r\n]*\r?\n|(?s:#\\|.*?\\|#))*#lang[^\r\n]*\r?\n?")
+  
+  (regexp-match pattern port)
+  (void))

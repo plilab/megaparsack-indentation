@@ -5,36 +5,41 @@
 (require "./utils/file_utils.rkt")
 (require "./utils/parse_utils.rkt")
 (require rackunit)
+(require data/either)
+(require megaparsack)
 
-;;; Main loop
-(define-runtime-path cases-path "corpus/files")
+(provide run-rhombus-compatibility-tests)
 
-(define files-to-parse
-  (command-line
-   #:args files-and-directories
-   files-and-directories))
+(define-runtime-path test-path "./cases/")
 
-(define (make-test-from-file filename)
+;; Creates a test case to compare between our parser and the reference parser
+(define (make-comparative-test filepath)
   (test-case
-   (path->string filename)
-   (define code (read-file-into-string filename))
-   (define reference-parsed-val (syntax->datum (parse-reference code)))
-   (define our-parsed-val (parse-our code))
-   (check-sexp-equal? reference-parsed-val our-parsed-val)))
+   (path->string filepath)
+   (define-values (our-parse reference-parse) (parse-with-both filepath))
+   (cond
+     [(and (failure? our-parse) (failure? reference-parse))
+      (fail-check (format "Both failed"))]
+     [(failure? our-parse) (parse-result! our-parse)]
+     [(failure? reference-parse) (raise (from-either reference-parse))]
+     [else (check-sexp-equal? (from-either reference-parse) (from-either our-parse))])))
+
 
 (define (run-rhombus-compatibility-tests paths)
   (for ([path paths])
     (match (file-or-directory-type path #t)
-      [(or 'file 'link) (make-test-from-file path)]
+      [(or 'file 'link) (make-comparative-test path)]
       [(or 'directory 'directory-link)
        (for ([filename (read-corpus path)])
-         (make-test-from-file filename))]
+         (make-comparative-test filename))]
       [_ (assert-unreachable)])))
 
 (module+ test
-  (define input-paths
-    (match files-to-parse
-      ['() (list cases-path)]
-      [paths (map string->path paths)]))
 
-  (run-rhombus-compatibility-tests input-paths))
+  (define command-line-paths
+    (map string->path
+         (command-line
+           #:args files-and-directories
+           files-and-directories)))
+
+  (run-rhombus-compatibility-tests (if (null? command-line-paths) (list test-path) command-line-paths)))

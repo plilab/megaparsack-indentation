@@ -13,12 +13,11 @@
   (require rackunit))
 
 (provide
- gen-indent/p
+ indent/p
  absolute-indentation/p
  local-absolute-indentation/p
  local-indentation/p
- local-token-mode/p
- make-indentation-error)
+ local-token-mode/p)
 
 (define inf-indentation
   (string->uninterned-symbol "megaparsack-indentation:infinite"))
@@ -66,17 +65,6 @@
     ['>= (make-error (~a "indentation greater than or equal to" lower #:separator " "))]
     ['= (make-error (~a "indentation between" lower "and" upper #:separator " "))]))
 
-(define (indentation-in-range/c state)
-  (flat-contract-with-explanation
-   (lambda (indentation)
-     (cond
-       [(valid-indentation? state indentation) #t]
-       [else
-        (lambda (blame)
-          (raise-blame-error blame indentation (make-indentation-error state indentation)))]))
-   #:name 'indentation-in-range/c))
-
-
 ;; Updates the indentation state's range to a sub-range based on the
 ;; indentation and the interal relation.
 (define (update-indentation state indent)
@@ -99,21 +87,26 @@
       ['= (struct-copy indent-state state [lower indent] [upper indent])]))
   (struct-copy indent-state updated [absmode #f]))
 
-
-
 (define indent-parameter (make-parser-parameter (indent-state 0 inf-indentation #f '>)))
 
-(define ((gen-indent/p accessor fail) parser)
+(define (syntax-indentation box)
+  (add1 (srcloc-column (syntax-box-srcloc box))))
+  
+(define ((make-guard-error state) token)
+  (define indentation (syntax-indentation token))
+  (format "Token ~a at ~a" token (make-indentation-error state indentation)))
+
+(define (indent/p parser)
   (do
       [previous-state <- (indent-parameter)]
-    [box <- (guard/p parser
-                     (lambda (val) (valid-indentation? previous-state (accessor val)))
+    [box <- (guard/p (syntax-box/p parser)
+                     (lambda (val) (valid-indentation? previous-state (syntax-indentation val)))
                      (format "~a" previous-state)
-                     (fail previous-state))]
-    (define box-indentation (accessor box))
+                     (make-guard-error previous-state))]
+    (define box-indentation (syntax-indentation box))
     (define new-state (update-indentation previous-state box-indentation))
     (indent-parameter new-state)
-    (pure box)))
+    (pure (syntax-box-datum box))))
 
 
 (define/contract (local-token-mode/p relation-transformer parser)
@@ -223,19 +216,19 @@
        [x <- (or/p
               (local-token-mode/p (const '=)
                                   (do
-                                      (gen-indent/p (char/p #\())
+                                      (indent/p (char/p #\())
                                     whitespace/p
                                     [x <- (local-indentation/p '> bracket-parser)]
                                     whitespace/p
-                                    (gen-indent/p (char/p #\)))
+                                    (indent/p (char/p #\)))
                                     (pure (list 'parens x))))
               (local-token-mode/p (const '>=)
                                   (do
-                                      (gen-indent/p (char/p #\[))
+                                      (indent/p (char/p #\[))
                                     whitespace/p
                                     [x <- (local-indentation/p '> bracket-parser)]
                                     whitespace/p
-                                    (gen-indent/p (char/p #\]))
+                                    (indent/p (char/p #\]))
                                     (pure (list 'bracket x)))))]
        whitespace/p
        (pure x))))
