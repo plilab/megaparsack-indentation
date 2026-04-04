@@ -413,29 +413,46 @@
 
 (define at/p
   (do
-    (token/p 'at)
-    [at <- (local-indentation/p '* (or/p
-                                     ; Command exists
-                                     (do
-                                       [command <- command/p]
-                                       (or/p
-                                         (do
-                                           ; => @ command ( argument , ... ) braced_text braced_text...
-                                           [arguments <- at-arguments]
-                                           [texts <- (many/p at-text)]
-                                           (pure `(at ,@command (parens ,@arguments ,@texts))))
-                                         ; => @ command braced_text braced_text ...
-                                         (do
-                                           [texts <- (many+/p at-text)]
-                                           (pure `(at ,@command (parens ,@texts))))
-                                         ; => @ command
-                                         (do
-                                           (pure `(at ,@command)))))
-          
-                                     ; @ braced_text braced_text ...
-                                     (do
-                                       [texts <- (many+/p at-text)]
-                                       (pure `(at (parens ,@texts))))))]
+    (noncommittal/p (token/p 'at))
+    [at <- (local-indentation/p
+             '*
+             (or/p
+              (try/p (do
+                      (label/p
+                        "(«"
+                        (do
+                         (noncommittal/p (token-string=/p 'opener "("))
+                         (opener/p "«")))
+                      newlines/p
+                      [top <- (local-indentation/p '* group-top-level)]
+                      newlines/p
+                      (label/p
+                        "»)"
+                        (do
+                          (token-string=/p 'closer "»")
+                          (closer/p ")")))
+                      (pure `(at . ,top))))
+              ; Command exists
+              (do
+                [command <- command/p]
+                (or/p
+                  (do
+                    ; => @ command ( argument , ... ) braced_text braced_text...
+                    [arguments <- at-arguments]
+                    [texts <- (many/p at-text)]
+                    (pure `(at ,@command (parens ,@arguments ,@texts))))
+                  ; => @ command braced_text braced_text ...
+                  (do
+                    [texts <- (many+/p at-text)]
+                    (pure `(at ,@command (parens ,@texts))))
+                  ; => @ command
+                  (do
+                    (pure `(at ,@command)))))
+
+              ; @ braced_text braced_text ...
+              (do
+                [texts <- (many+/p at-text)]
+                (pure `(at (parens ,@texts))))))]
     (?/p non-newline-whitespace/p)
     (pure at)))
       
@@ -446,6 +463,23 @@
         (match (first xs)
           [(cons 'at contents) (loop (rest xs) (append (reverse contents) acc))]
           [x (loop (rest xs) (cons x acc))]))))
+
+(define at-end/p
+  (do
+    (label/p
+      "(«"
+      (do
+       (token-string=/p 'opener "(")
+       (opener/p "«")))
+    newlines/p
+    [group <- (local-indentation/p '* (group/p #:in-alt? #f))]
+    newlines/p
+    (label/p
+      "»)"
+      (do
+        (token-string=/p 'closer "»")
+        (closer/p ")")))
+    (pure `(at . ,(cdr group)))))
     
 
 
@@ -492,6 +526,7 @@
       [else (or/p (local-indentation/p '> alts/p) (do newlines/p alts/p))]))
   (define rest/p
     (or/p
+      at-end/p
       (do
         (lexeme/p 'block-operator)
         [rest <- (or/p
