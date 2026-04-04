@@ -180,50 +180,70 @@
                              line-separator))]
    (pure (apply append groups))))
 
+(define (sequence-rest parser/p separator/p)
+  (or/p
+    (do
+      (local-indentation/p '* separator/p)
+      (or/p
+        (sequence-inline parser/p separator/p sequence-rest)
+        (do
+          newlines/p
+          (sequence-aligned parser/p separator/p sequence-rest))
+        (pure '())))
+    (pure '())))
+
+(define (sequence-rest-optional-separator parser/p separator/p)
+  (or/p
+    (do
+      (local-indentation/p '* separator/p)
+      (or/p
+        (sequence-inline parser/p separator/p sequence-rest)
+        (do
+          newlines/p
+          (sequence-aligned parser/p separator/p sequence-rest))
+        (pure '())))
+    (do
+      newlines/p
+      (sequence-aligned parser/p separator/p sequence-rest))
+    (pure '())))
+
+(define (sequence-inline parser/p separator/p rest/p)
+  (define rest (rest/p parser/p separator/p))
+  (or/p
+    (do
+      (local-indentation/p
+        '*
+        (do
+          (absolute-indentation/p (lexeme/p 'group-comment))
+          (or/p
+            (do newlines/p (absolute-indentation/p parser/p))
+            parser/p)))
+      rest)
+    (do
+      [x <- (local-indentation/p '* parser/p)]
+      [xs <- rest]
+      (pure (cons x xs)))))
+
+(define (sequence-aligned parser/p separator/p rest/p)
+  (define rest (rest/p parser/p separator/p))
+  (or/p
+    (do
+      (or/p
+        (do
+          (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
+          parser/p)
+        (try/p (do
+                (local-indentation/p '* (lexeme/p 'group-comment))
+                newlines/p
+                (absolute-indentation/p parser/p))))
+      rest)
+    (do
+      [x <- (absolute-indentation/p parser/p)]
+      [xs <- rest]
+      (pure (cons x xs)))))
+
 (define (sequence+/p parser/p separator/p)
-  (define rest
-    (or/p
-      (do
-        (local-indentation/p '* separator/p)
-        (or/p
-          (delay/p inline)
-          (do
-            newlines/p
-            (delay/p aligned))
-          (pure '())))
-      (pure '())))
-  (define aligned
-    (or/p
-      (do
-        (or/p
-          (do
-            (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
-            parser/p)
-          (try/p (do
-                  (local-indentation/p '* (lexeme/p 'group-comment))
-                  newlines/p
-                  (absolute-indentation/p parser/p))))
-        rest)
-      (do
-        [x <- (absolute-indentation/p parser/p)]
-        [xs <- rest]
-        (pure (cons x xs)))))
-  (define inline
-    (or/p
-      (do
-        (local-indentation/p
-          '*
-          (do
-            (absolute-indentation/p (lexeme/p 'group-comment))
-            (or/p
-              (do newlines/p (absolute-indentation/p parser/p))
-              parser/p)))
-        rest)
-      (do
-        [x <- (local-indentation/p '* parser/p)]
-        [xs <- rest]
-        (pure (cons x xs)))))
-  aligned)
+  (sequence-aligned parser/p separator/p sequence-rest))
 
 (define (sequence/p parser/p separator/p)
   (or/p (sequence+/p parser/p separator/p)
@@ -634,26 +654,6 @@
       (pure `(alts . ,alts)))))
 
   
-
-;; (define alts/p
-;;   (do
-;;     [alts <- (many+/p
-;;               (absolute-indentation/p
-;;                (many+/p (try/p (do
-;;                                  (lexeme/p 'bar-operator)
-;;                                  [block <- (or/p guillemet/p block-in-alt/p)]
-;;                                  newlines/p
-;;                                  (pure block))))))]
-;;     (pure (cons 'alts (apply append alts)))))
-
-
-(define (group-comment #:in-alt? [is-in-alt #f])
-  (define group (group/p #:in-alt? is-in-alt))
-  (do
-    (absolute-indentation/p (lexeme/p 'group-comment))
-    (or/p group
-          (do newlines/p (absolute-indentation/p group)))))
-
 (define (group-sequence #:in-alt? [in-alt? #f])
   (define separator/p (many+/p semicolon/p))
   (define parser/p (group/p #:in-alt? in-alt?))
@@ -711,6 +711,13 @@
 
 
 (define (group+/p #:in-alt? [is-in-alt #f])
+  (define (group-comment #:in-alt? [is-in-alt #f])
+    (define group (group/p #:in-alt? is-in-alt))
+    (do
+      (absolute-indentation/p (lexeme/p 'group-comment))
+      (or/p group
+            (do newlines/p (absolute-indentation/p group)))))
+
   (define comment (group-comment #:in-alt? is-in-alt))
   (define separator (noncommittal/p (many+/p semicolon/p)))
   (define remaining-groups/p (do
