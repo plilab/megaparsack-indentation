@@ -228,14 +228,14 @@
                  (do
                    (label/p "'«" (do (noncommittal/p (token-string=/p 'opener "'")) (opener/p "«")))
                    newlines/p
-                   [groups <- (local-indentation/p '* (many-groups/p))]
+                   [groups <- (local-indentation/p '* (group*/p))]
                    newlines/p
                    (local-indentation/p '* (label/p "'»" (do (token-string=/p 'closer "»") (closer/p "'"))))
                    (pure groups))
                  (do
                    (opener/p "'")
                    newlines/p
-                   [groups <- (local-indentation/p '* (many-groups/p))]
+                   [groups <- (local-indentation/p '* (group*/p))]
                    newlines/p
                    (local-indentation/p '* (closer/p "'"))
                    (pure groups)))]
@@ -526,13 +526,13 @@
 (define block/p
   (local-indentation/p '>
                        (do
-                         [groups <- (delay/p (many-groups+/p))]
+                         [groups <- (delay/p (group+/p))]
                          (pure `(block . ,groups)))))
 
 (define block-in-alt/p
   (local-indentation/p '>
                        (do
-                         [groups <- (delay/p (many-groups+/p #:in-alt? #t))]
+                         [groups <- (delay/p (group+/p #:in-alt? #t))]
                          (pure `(block . ,groups)))))
 
 (define alts/p
@@ -541,7 +541,7 @@
               (absolute-indentation/p
                (many+/p (try/p (do
                                  (lexeme/p 'bar-operator)
-                                 [block <- block-in-alt/p]
+                                 [block <- (or/p guillemet/p block-in-alt/p)]
                                  newlines/p
                                  (pure block))))))]
     (pure (cons 'alts (apply append alts)))))
@@ -558,7 +558,7 @@
           (do newlines/p (absolute-indentation/p valid-comment-value)))))
 
 
-(define (many-groups/p #:in-alt? [is-in-alt #f])
+(define (group*/p #:in-alt? [is-in-alt #f])
   (define comment (group-comment #:in-alt? is-in-alt))
   (define separator (noncommittal/p (many+/p semicolon/p)))
   (define remaining-groups/p (do
@@ -593,7 +593,7 @@
                 #:sep newlines/p)]
     (pure (apply append lines))))
 
-(define (many-groups+/p #:in-alt? [is-in-alt #f])
+(define (group+/p #:in-alt? [is-in-alt #f])
   (define comment (group-comment #:in-alt? is-in-alt))
   (define separator (noncommittal/p (many+/p semicolon/p)))
   (define remaining-groups/p (do
@@ -606,7 +606,7 @@
       (noncommittal/p (absolute-indentation/p trim/p))
       newline/p
       newlines/p
-      (many-groups+/p #:in-alt? #f))
+      (group+/p #:in-alt? #f))
     (absolute-indentation/p
       (do
        trim/p
@@ -617,7 +617,7 @@
                                remaining-groups/p)
                              (pure '()))]
        newlines/p
-       [rest-lines <- (many-groups/p #:in-alt? #f)]
+       [rest-lines <- (group*/p #:in-alt? #f)]
        (pure `(,first-group ,@remaining-groups ., rest-lines))))))
 
 
@@ -629,7 +629,7 @@
   (do
     (?/p non-newline-whitespace/p)
     newlines/p
-    [groups <- (many-groups/p)]
+    [groups <- (group*/p)]
     newlines/p
     eof/p
     (pure (cons 'multi groups))))
