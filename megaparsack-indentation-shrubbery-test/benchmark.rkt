@@ -15,21 +15,6 @@
 (define (parseable-with-both? filename)
   (define-values (a b) (parse-with-both filename))
   (and (success? a) (success? b)))
-  ;; (match/values (parse-with-both filename)
-  ;;   [((? failure?) (? failure?))
-  ;;    (begin
-  ;;      (eprintf "Skipping ~a, both parsers failed\n" filename)
-  ;;      #f)]
-  ;;   [((? failure?) _)
-  ;;    (begin
-  ;;      (eprintf "Skipping ~a, our parser failed\n" filename)
-  ;;      #f)]
-  ;;   [(_ (? failure?))
-  ;;    (begin
-  ;;      (eprintf "Skipping ~a, reference parser failed\n" filename)
-  ;;      #f)]
-  ;;   [(_x _x) #t]
-  ;;   [(_ _) (begin (eprintf "Skipping ~a, parsed results do not match\n" filename) #f)]))
 
 (define (bench-file paths)
   (run-benchmarks
@@ -50,7 +35,7 @@
              (file-position in code-start))))
     #:make-name path->string
     #:num-trials 1
-    #:results-file "wow"
+    #:results-file "benchmark_results"
     #:skip (lambda (file _) (not (parseable-with-both? file)))))
 
 (module+ main
