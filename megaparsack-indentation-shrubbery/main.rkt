@@ -624,40 +624,14 @@
                          [groups <- (delay/p (group+/p #:in-alt? #t))]
                          (pure `(block . ,groups)))))
 
-(define alts/p
-  (let ()
-    (define alt-branch
-      (do
-        (lexeme/p 'bar-operator)
-        (or/p guillemet/p block-in-alt/p (do newlines/p block/p))))
-    (define rest
-      (or/p
-        (delay/p inline)
-        (do
-          newlines/p
-          (delay/p aligned))
-        (pure '())))
-    (define aligned
-      (do
-        [x <- (absolute-indentation/p alt-branch)]
-        [xs <- rest]
-        (pure (cons x xs))))
-    (define inline
-      (do
-        [x <- alt-branch]
-        [xs <- rest]
-        (pure (cons x xs))))
-    (do
-      [alts <- aligned]
-      (pure `(alts . ,alts)))))
 
-;; (define alts/p
-;;   (let ([alt-branch (do
-;;                       (lexeme/p 'bar-operator)
-;;                       (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))])
-;;     (do
-;;       [alts <- (separated+/p alt-branch void/p)]
-;;       (pure `(alts . ,alts)))))
+(define alts/p
+  (let ([alt-branch (do
+                      (lexeme/p 'bar-operator)
+                      (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))])
+    (do
+      [alts <- (sequence+/p alt-branch void/p)]
+      (pure `(alts . ,alts)))))
 
   
 
@@ -736,42 +710,6 @@
     (pure '())))
 
 
-;; (define (group*/p #:in-alt? [is-in-alt #f])
-;;   (define comment (group-comment #:in-alt? is-in-alt))
-;;   (define separator (many+/p semicolon/p))
-;;   (define remaining-groups/p (do
-;;                                [groups-with-voids <- (sep-end-by/p (or/p (local-indentation/p '> comment) (group/p #:in-alt? is-in-alt)) separator)]
-;;                                (pure (filter (lambda (x) (not (void? x))) groups-with-voids))))
-;;   (do
-;;     [lines <- (many/p
-;;                 (do
-;;                    (absolute-indentation/p
-;;                      (or/p
-;;                        (do
-;;                          semicolon/p
-;;                          (many/p semicolon/p)
-;;                          [remaining-groups <- remaining-groups/p]
-;;                          (pure remaining-groups))
-;;                        (do
-;;                          [group <- (group/p #:in-alt? is-in-alt)]
-;;                          (or/p
-;;                            (do
-;;                              separator
-;;                              [remaining-groups <- remaining-groups/p]
-;;                              (pure `(,group . ,remaining-groups)))
-;;                            (pure `(,group))))
-;;                        (do
-;;                          comment
-;;                          (or/p
-;;                            (do
-;;                              separator
-;;                              [remaining-groups <- remaining-groups/p]
-;;                              (pure remaining-groups))
-;;                            (pure '()))))))
-;;                 #:sep newlines/p)]
-;;     (pure (apply append lines))))
-
-
 (define (group+/p #:in-alt? [is-in-alt #f])
   (define comment (group-comment #:in-alt? is-in-alt))
   (define separator (noncommittal/p (many+/p semicolon/p)))
@@ -795,9 +733,12 @@
                                separator
                                remaining-groups/p)
                              (pure '()))]
-       newlines/p
-       [rest-lines <- (group*/p #:in-alt? #f)]
-       (pure `(,first-group ,@remaining-groups ., rest-lines))))))
+       (or/p
+         (do
+          newlines/p
+          [rest-lines <- (group-sequence #:in-alt? #f)]
+          (pure `(,first-group ,@remaining-groups ., rest-lines)))
+         (pure `(,first-group . ,remaining-groups)))))))
 
 ;;;; Document
 
