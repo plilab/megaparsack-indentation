@@ -151,35 +151,35 @@
 ;;;; Sequencing
 ;;;; ----------
 
-(define (sequence-rest parser/p separator/p)
+(define (sequence-rest parser/p separator/p acc)
   (or/p
     (do
       (local-indentation/p '* separator/p)
       (or/p
-        (sequence-inline parser/p separator/p sequence-rest)
+        (sequence-inline parser/p separator/p sequence-rest acc)
         (do
           newlines/p
-          (sequence-aligned parser/p separator/p sequence-rest))
-        (pure '())))
-    (pure '())))
+          (sequence-aligned parser/p separator/p sequence-rest acc))
+        (pure acc)))
+    (pure acc)))
 
-(define (sequence-rest-optional-separator parser/p separator/p)
+(define (sequence-rest-optional-separator parser/p separator/p acc)
   (define aligned
     (do
       newlines/p
-      (sequence-aligned parser/p separator/p sequence-rest-optional-separator)))
+      (sequence-aligned parser/p separator/p sequence-rest-optional-separator acc)))
   (or/p
     (do
       (local-indentation/p '* separator/p)
       (or/p
-        (sequence-inline parser/p separator/p sequence-rest-optional-separator)
+        (sequence-inline parser/p separator/p sequence-rest-optional-separator acc)
         aligned
-        (pure '())))
+        (pure acc)))
     aligned
-    (pure '())))
+    (pure acc)))
 
-(define (sequence-inline parser/p separator/p rest/p)
-  (define rest (rest/p parser/p separator/p))
+(define (sequence-inline parser/p separator/p rest/p acc)
+  (define (rest acc) (rest/p parser/p separator/p acc))
   (or/p
     (do
       (local-indentation/p
@@ -189,14 +189,13 @@
           (or/p
             (do newlines/p (absolute-indentation/p parser/p))
             parser/p)))
-      rest)
+      (rest acc))
     (do
       [x <- (local-indentation/p '* parser/p)]
-      [xs <- rest]
-      (pure (cons x xs)))))
+      (rest (cons x acc)))))
 
-(define (sequence-aligned parser/p separator/p rest/p)
-  (define rest (rest/p parser/p separator/p))
+(define (sequence-aligned parser/p separator/p rest/p acc)
+  (define (rest acc) (rest/p parser/p separator/p acc))
   (or/p
     (do
       (or/p
@@ -207,21 +206,25 @@
                 (local-indentation/p '* (lexeme/p 'group-comment))
                 newlines/p
                 (absolute-indentation/p parser/p))))
-      rest)
+      (rest acc))
     (do
       [x <- (absolute-indentation/p parser/p)]
-      [xs <- rest]
-      (pure (cons x xs)))))
+      (rest (cons x acc)))))
+
+(define (rev/p parser)
+  (do
+    [xs <- parser]
+    (pure (reverse xs))))
 
 (define (sequence+/p parser/p separator/p)
-  (sequence-aligned parser/p separator/p sequence-rest))
+  (rev/p (sequence-aligned parser/p separator/p sequence-rest '())))
 
 (define (sequence/p parser/p separator/p)
   (or/p (sequence+/p parser/p separator/p)
         (pure '())))
 
 (define (sequence-optional-separator+/p parser/p separator/p)
-  (sequence-aligned parser/p separator/p sequence-rest-optional-separator))
+  (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-separator '())))
 
 (define (sequence-optional-separator/p parser/p separator/p)
   (or/p (sequence-optional-separator+/p parser/p separator/p)
