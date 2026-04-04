@@ -222,20 +222,25 @@
 (define brackets/p (make-opener-closer/p 'brackets (opener/p "[") (closer/p "]") comma/p))
 (define braces/p (make-opener-closer/p 'braces (opener/p "{") (closer/p "}") comma/p))
 
+(define alts-or-group*/p
+  (or/p
+    (do [alts <- (delay/p alts/p)] (pure `((group ,alts))))
+    (delay/p (group*/p))))
+
 (define quotes/p
   (do
     [groups <- (or/p
                  (do
                    (label/p "'«" (do (noncommittal/p (token-string=/p 'opener "'")) (opener/p "«")))
                    newlines/p
-                   [groups <- (local-indentation/p '* (group*/p))]
+                   [groups <- (local-indentation/p '* alts-or-group*/p)]
                    newlines/p
                    (local-indentation/p '* (label/p "'»" (do (token-string=/p 'closer "»") (closer/p "'"))))
                    (pure groups))
                  (do
                    (opener/p "'")
                    newlines/p
-                   [groups <- (local-indentation/p '* (group*/p))]
+                   [groups <- (local-indentation/p '* alts-or-group*/p)]
                    newlines/p
                    (local-indentation/p '* (closer/p "'"))
                    (pure groups)))]
