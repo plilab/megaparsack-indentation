@@ -147,38 +147,9 @@
   (do
     (lexeme/p 'continue-operator) newline/p))
 
-;;;; -------------------
-;;;; Opener-closer pairs
-;;;; -------------------
-
-;; separated-groups/p: (->* (parser?) (#:newline-separated? boolean?) parser?)
-;;
-;; This parser parses a trailing separator if one exists.
-;;
-;; Parameters
-;;  separator/p - Parser used to separate groups
-;;  #:newline-separated? - Whether newlines can be used as separators instead of separator/p (default #f)
-;;
-;; Returns
-;;  A parser that parses groups separated by separator/p (or a newline if
-;;  #:newline-separated? is true). There can be multiple groups on the same
-;;  line, with the lines of the groups being aligned at the first group of each
-;;  line.
-(define (separated-groups/p separator/p #:newline-separated? [is-newline-separated #f])
- (define line-separator
-   (cond
-     [is-newline-separated (or/p (do newlines/p separator/p newlines/p) (do newline/p newlines/p))]
-     [else (do newlines/p separator/p newlines/p)]))
-
- (do
-   [groups <- (local-indentation/p
-               '*
-               (sep-end-by/p (do
-                               [groups <- (absolute-indentation/p
-                                           (many/p (local-indentation/p '>= (group/p #:in-alt? #f)) #:sep (noncommittal/p separator/p)))]
-                               (pure groups))
-                             line-separator))]
-   (pure (apply append groups))))
+;;;; ----------
+;;;; Sequencing
+;;;; ----------
 
 (define (sequence-rest parser/p separator/p)
   (or/p
@@ -249,6 +220,17 @@
   (or/p (sequence+/p parser/p separator/p)
         (pure '())))
 
+(define (sequence-optional-separator+/p parser/p separator/p)
+  (sequence-aligned parser/p separator/p sequence-rest-optional-separator))
+
+(define (sequence-optional-separator/p parser/p separator/p)
+  (or/p (sequence-optional-separator+/p parser/p separator/p)
+        (pure '())))
+
+;;;; -------------------
+;;;; Opener-closer pairs
+;;;; -------------------
+
 
 (define (opener/p str)
   (label/p str
@@ -257,6 +239,15 @@
 (define (closer/p str)
   (label/p str
     (lexeme-string=/p 'closer str)))
+
+(define (between/p opener closer inside)
+  (do
+    opener
+    newlines/p
+    [in <- (local-indentation/p '* inside)]
+    newlines/p
+    (local-indentation/p '* closer)
+    (pure in)))
 
 ;; make-opener-closer/p: (->* (string? string? parser?) (#:newline-separated boolean?) parser?)
 ;; 
@@ -279,11 +270,7 @@
 ;;  For example, parsing `(a, b, c)` with (make-opener-closer/p 'paren "(" ")" comma/p) gives us (parens (group a) (group b) (group c))
 (define (make-opener-closer/p identifier opener closer separator)
   (do
-    opener
-    newlines/p
-    [groups <- (local-indentation/p '* (sequence/p (group/p #:in-alt? #f) separator))]
-    newlines/p
-    (local-indentation/p '* closer)
+    [groups <- (between/p opener closer (sequence/p (delay/p (group/p #:in-alt? #f)) separator))]
     (pure `(,identifier . ,groups))))
 
 
@@ -448,9 +435,10 @@
       (pure (list val)))))
 (define at-arguments 
   (do
-    (opener/p "(")
-    [groups <- (separated-groups/p comma/p #:newline-separated? #t)]
-    (closer/p ")")
+    [groups <- (between/p
+                 (opener/p "(")
+                 (closer/p ")")
+                 (sequence-optional-separator/p (delay/p (group/p #:in-alt? #t)) comma/p))]
     (pure groups)))
 
 (define (flip-at-bracket ch)
@@ -657,52 +645,7 @@
 (define (group-sequence #:in-alt? [in-alt? #f])
   (define separator/p (many+/p semicolon/p))
   (define parser/p (group/p #:in-alt? in-alt?))
-  (define rest
-    (or/p
-      (do
-        (local-indentation/p '* separator/p)
-        (or/p
-          (delay/p inline)
-          (do
-            newlines/p
-            (delay/p aligned))
-          (pure '())))
-      (do
-        newlines/p
-        (delay/p aligned))
-      (pure '())))
-  (define aligned
-    (or/p
-      (do
-        (or/p
-          (do
-            (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
-            parser/p)
-          (try/p (do
-                  (local-indentation/p '* (lexeme/p 'group-comment))
-                  newlines/p
-                  (absolute-indentation/p parser/p))))
-        rest)
-      (do
-        [x <- (absolute-indentation/p parser/p)]
-        [xs <- rest]
-        (pure (cons x xs)))))
-  (define inline
-    (or/p
-      (do
-        (local-indentation/p
-          '*
-          (do
-            (absolute-indentation/p (lexeme/p 'group-comment))
-            (or/p
-              (do newlines/p (absolute-indentation/p parser/p))
-              parser/p)))
-        rest)
-      (do
-        [x <- (local-indentation/p '* parser/p)]
-        [xs <- rest]
-        (pure (cons x xs)))))
-  aligned)
+  (sequence-optional-separator+/p parser/p separator/p))
 
 (define (group*/p #:in-alt? [in-alt? #f])
   (or/p
