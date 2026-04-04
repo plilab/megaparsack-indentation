@@ -474,67 +474,54 @@
                                           (pure (cons op operator-line-with-continuations))))))]
     (pure (apply append first-line-with-continuation operator-continuations))))
 
-(define (group/p #:in-alt? is-in-alt)
-  (define colon-with-block/p
-    (do
-      (lexeme/p 'block-operator)
-      (cond
-        [is-in-alt (or/p block-in-alt/p (do newlines/p block/p))]
-        [else (do newlines/p block/p)])))
+(define guillemet/p
+  (do
+    (opener/p "«")
+    (closer/p "»")
+    (pure '(block))))
 
-  (or/p
-   ; Group exists
-   (do
-     [group <- group-top-level]
-     (or/p
-
-      ; => Group with empty block and alts
-      (try/p (do
-               (lexeme/p 'block-operator)
-               newlines/p
-               [alts <- alts/p]
-               (pure `(group ,@group ,alts))))
-
-      ; Group and Block exist
+(define (group/p #:in-alt? in-alt?)
+  (define inlinable-alts
+    (cond
+      [in-alt? (do newlines/p alts/p)]
+      [else (or/p (local-indentation/p '> alts/p) (do newlines/p alts/p))]))
+  (define rest/p
+    (or/p
       (do
-        [block <- colon-with-block/p]
-        (or/p
-         ; => Group, Block, and Alt
-         (try/p (do
-                  newlines/p
-                  [alts <- alts/p]
-                  (pure `(group ,@group ,block ,alts))))
-         ; => Group and Block
-         (pure `(group ,@group ,block))))
+        (lexeme/p 'block-operator)
+        [rest <- (or/p
+                   (do
+                     [block <- guillemet/p]
+                     [alts <- (?/p inlinable-alts)]
+                     (pure (cons block alts)))
+                   (do
+                     [block <- (?/p (cond [in-alt? block-in-alt/p] [else (do newlines/p block/p)]))]
+                     [alts <- (?/p (do newlines/p alts/p))]
+                     (pure (cons block alts))))]
+        (pure (match rest
+                [(cons (? void?) (? void?)) '()]
+                [(cons block (? void?)) (list block)]
+                [(cons (? void?) alts) (list alts)]
+                [(cons block alts) (list block alts)])))))
 
-      ; Group exists but Block doesn't
+  (label/p
+    "group"
+    (local-indentation/p
+      '*
       (or/p
-       ; => Group with Alt on another line
-       (try/p (do
-                newlines/p
-                [alts <- alts/p]
-                (pure `(group ,@group ,alts))))
-       (cond
-         ; => Grou
-         [is-in-alt (pure `(group ,@group))]
-         ; => Group with Alt on the same line
-         [else (or/p
-                (try/p (do
-                         [alts <- (local-indentation/p '> alts/p)]
-                         (pure `(group ,@group ,alts))))
-                (pure `(group ,@group)))]))))
-
-   ; Group does not exist
-   (do
-     [block <- colon-with-block/p]
-     (or/p
-      ; => Block and Alts
-      (try/p (do
-               newlines/p
-               [alts <- alts/p]
-               (pure `(group ,block ,alts))))
-      ; => Block
-      (pure `(group ,block))))))
+       (do
+         [top <- (absolute-indentation/p group-top-level)]
+         (or/p
+           (do
+             [rest <- rest/p]
+             (pure `(group ,@top . ,rest)))
+           (do
+             [alts <- inlinable-alts]
+             (pure `(group ,@top ,alts)))
+           (pure `(group . ,top))))
+       (do
+         [rest <- rest/p]
+         (pure `(group . ,rest)))))))
 
 (define block/p
   (local-indentation/p '>
