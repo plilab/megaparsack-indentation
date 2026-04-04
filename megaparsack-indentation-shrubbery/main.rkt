@@ -748,8 +748,6 @@
 
 ;;;; Document
 
-;; TODO Ask if multi in shrubbery output and <document> from
-;; https://docs.racket-lang.org/shrubbery/group-and-block.html are the same thing?
 (define document/p
   (do
     (?/p non-newline-whitespace/p)
