@@ -686,7 +686,7 @@
 
 (define (group*/p #:in-alt? [is-in-alt #f])
   (define comment (group-comment #:in-alt? is-in-alt))
-  (define separator (noncommittal/p (many+/p semicolon/p)))
+  (define separator (many+/p semicolon/p))
   (define remaining-groups/p (do
                                [groups-with-voids <- (sep-end-by/p (or/p (local-indentation/p '> comment) (group/p #:in-alt? is-in-alt)) separator)]
                                (pure (filter (lambda (x) (not (void? x))) groups-with-voids))))
@@ -745,53 +745,6 @@
        newlines/p
        [rest-lines <- (group*/p #:in-alt? #f)]
        (pure `(,first-group ,@remaining-groups ., rest-lines))))))
-
-;; (define (group+/p #:in-alt? [in-alt? #f])
-;;   (define separator (many+/p semicolon/p))
-;;   (define rest
-;;     (or/p
-;;       (do
-;;         (local-indentation/p '* separator)
-;;         (or/p
-;;           (delay/p inline)
-;;           (do
-;;             newlines/p
-;;             (delay/p aligned))))
-;;       (do
-;;         newlines/p
-;;         (delay/p aligned))))
-;;   (define aligned
-;;     (or/p
-;;       (do
-;;         (or/p
-;;           (do
-;;             (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
-;;             parser/p)
-;;           (do
-;;             (local-indentation/p '* (lexeme/p 'group-comment))
-;;             newlines/p
-;;             (absolute-indentation/p parser/p)))
-;;         rest)
-;;       (do
-;;         [x <- (absolute-indentation/p parser/p)]
-;;         [xs <- rest]
-;;         (pure (cons x xs)))))
-;;   (define inline
-;;     (or/p
-;;       (do
-;;         (local-indentation/p
-;;           '*
-;;           (do
-;;             (absolute-indentation/p (lexeme/p 'group-comment))
-;;             (or/p
-;;               (do newlines/p (absolute-indentation/p parser/p))
-;;               parser/p)))
-;;         rest)
-;;       (do
-;;         [x <- (local-indentation/p '* parser/p)]
-;;         [xs <- rest]
-;;         (pure (cons x xs)))))
-;;   aligned)
 
 ;;;; Document
 
