@@ -180,6 +180,34 @@
                              line-separator))]
    (pure (apply append groups))))
 
+(define (sep-groups/p separator/p)
+  (define rest
+    (or/p
+      (do
+        (local-indentation/p '* separator/p)
+        (or/p
+          (delay/p inline)
+          (do
+            newlines/p
+            (delay/p aligned))
+          (pure '())))
+      (pure '())))
+  (define aligned
+    (do
+      [x <- (absolute-indentation/p (group/p #:in-alt? #f))]
+      [xs <- rest]
+      (pure (cons x xs))))
+  (define inline
+    (do
+      [x <- (group/p #:in-alt? #f)]
+      [xs <- rest]
+      (pure (cons x xs))))
+  (or/p
+    (do
+      newlines/p
+      aligned)
+    (pure '())))
+
 
 (define (opener/p str)
   (label/p str
@@ -208,11 +236,11 @@
 ;;  returns a list of groups prefixed by the identifier.
 ;;
 ;;  For example, parsing `(a, b, c)` with (make-opener-closer/p 'paren "(" ")" comma/p) gives us (parens (group a) (group b) (group c))
-(define (make-opener-closer/p identifier opener closer separator #:newline-separated? [is-newline-separated #f])
+(define (make-opener-closer/p identifier opener closer separator)
   (do
     opener
     newlines/p
-    [groups <- (separated-groups/p separator #:newline-separated? is-newline-separated)]
+    [groups <- (local-indentation/p '* (sep-groups/p separator))]
     newlines/p
     (local-indentation/p '* closer)
     (pure `(,identifier . ,groups))))
