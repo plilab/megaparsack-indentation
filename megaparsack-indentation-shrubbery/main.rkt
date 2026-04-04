@@ -180,7 +180,7 @@
                              line-separator))]
    (pure (apply append groups))))
 
-(define (separated+/p parser/p separator/p)
+(define (sequence+/p parser/p separator/p)
   (define rest
     (or/p
       (do
@@ -199,10 +199,10 @@
           (do
             (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
             parser/p)
-          (do
-            (local-indentation/p '* (lexeme/p 'group-comment))
-            newlines/p
-            (absolute-indentation/p parser/p)))
+          (try/p (do
+                  (local-indentation/p '* (lexeme/p 'group-comment))
+                  newlines/p
+                  (absolute-indentation/p parser/p))))
         rest)
       (do
         [x <- (absolute-indentation/p parser/p)]
@@ -225,8 +225,8 @@
         (pure (cons x xs)))))
   aligned)
 
-(define (separated/p parser/p separator/p)
-  (or/p (separated+/p parser/p separator/p)
+(define (sequence/p parser/p separator/p)
+  (or/p (sequence+/p parser/p separator/p)
         (pure '())))
 
 
@@ -261,7 +261,7 @@
   (do
     opener
     newlines/p
-    [groups <- (local-indentation/p '* (separated/p (group/p #:in-alt? #f) separator))]
+    [groups <- (local-indentation/p '* (sequence/p (group/p #:in-alt? #f) separator))]
     newlines/p
     (local-indentation/p '* closer)
     (pure `(,identifier . ,groups))))
@@ -627,9 +627,9 @@
 (define alts/p
   (let ()
     (define alt-branch
-      (try/p (do
-              (lexeme/p 'bar-operator)
-              (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))))
+      (do
+        (lexeme/p 'bar-operator)
+        (or/p guillemet/p block-in-alt/p (do newlines/p block/p))))
     (define rest
       (or/p
         (delay/p inline)
@@ -652,9 +652,9 @@
       (pure `(alts . ,alts)))))
 
 ;; (define alts/p
-;;   (let ([alt-branch (try/p (do
-;;                             (lexeme/p 'bar-operator)
-;;                             (or/p guillemet/p block-in-alt/p (do newlines/p block/p))))])
+;;   (let ([alt-branch (do
+;;                       (lexeme/p 'bar-operator)
+;;                       (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))])
 ;;     (do
 ;;       [alts <- (separated+/p alt-branch void/p)]
 ;;       (pure `(alts . ,alts)))))
@@ -680,54 +680,97 @@
     (or/p group
           (do newlines/p (absolute-indentation/p group)))))
 
+(define (group-sequence #:in-alt? [in-alt? #f])
+  (define separator/p (many+/p semicolon/p))
+  (define parser/p (group/p #:in-alt? in-alt?))
+  (define rest
+    (or/p
+      (do
+        (local-indentation/p '* separator/p)
+        (or/p
+          (delay/p inline)
+          (do
+            newlines/p
+            (delay/p aligned))
+          (pure '())))
+      (do
+        newlines/p
+        (delay/p aligned))
+      (pure '())))
+  (define aligned
+    (or/p
+      (do
+        (or/p
+          (do
+            (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
+            parser/p)
+          (try/p (do
+                  (local-indentation/p '* (lexeme/p 'group-comment))
+                  newlines/p
+                  (absolute-indentation/p parser/p))))
+        rest)
+      (do
+        [x <- (absolute-indentation/p parser/p)]
+        [xs <- rest]
+        (pure (cons x xs)))))
+  (define inline
+    (or/p
+      (do
+        (local-indentation/p
+          '*
+          (do
+            (absolute-indentation/p (lexeme/p 'group-comment))
+            (or/p
+              (do newlines/p (absolute-indentation/p parser/p))
+              parser/p)))
+        rest)
+      (do
+        [x <- (local-indentation/p '* parser/p)]
+        [xs <- rest]
+        (pure (cons x xs)))))
+  aligned)
 
-(define (group*/p #:in-alt? [is-in-alt #f])
-  (define comment (group-comment #:in-alt? is-in-alt))
-  (define separator (many+/p semicolon/p))
-  (define remaining-groups/p (do
-                               [groups-with-voids <- (sep-end-by/p (or/p (local-indentation/p '> comment) (group/p #:in-alt? is-in-alt)) separator)]
-                               (pure (filter (lambda (x) (not (void? x))) groups-with-voids))))
-  (do
-    [lines <- (many/p
-                (do
-                   (absolute-indentation/p
-                     (or/p
-                       (do
-                         semicolon/p
-                         (many/p semicolon/p)
-                         [remaining-groups <- remaining-groups/p]
-                         (pure remaining-groups))
-                       (do
-                         [group <- (group/p #:in-alt? is-in-alt)]
-                         (or/p
-                           (do
-                             separator
-                             [remaining-groups <- remaining-groups/p]
-                             (pure `(,group . ,remaining-groups)))
-                           (pure `(,group))))
-                       (do
-                         comment
-                         (or/p
-                           (do
-                             separator
-                             [remaining-groups <- remaining-groups/p]
-                             (pure remaining-groups))
-                           (pure '()))))))
-                #:sep newlines/p)]
-    (pure (apply append lines))))
+(define (group*/p #:in-alt? [in-alt? #f])
+  (or/p
+    (group-sequence #:in-alt? in-alt?)
+    (pure '())))
 
-;; (define (group*/p #:in-alt? [in-alt? #f])
-;;   (define group (group/p #:in-alt? in-alt?))
-;;   (define comments (many/p (do (?/p (local-indentation/p '> (group-comment #:in-alt? in-alt?))) semicolon/p)))
-;;   (define line
-;;     (do
-;;       comments
-;;       [groups <- (sep-end-by/p group (do semicolon/p comments))]
-;;       (pure groups)))
+
+;; (define (group*/p #:in-alt? [is-in-alt #f])
+;;   (define comment (group-comment #:in-alt? is-in-alt))
+;;   (define separator (many+/p semicolon/p))
+;;   (define remaining-groups/p (do
+;;                                [groups-with-voids <- (sep-end-by/p (or/p (local-indentation/p '> comment) (group/p #:in-alt? is-in-alt)) separator)]
+;;                                (pure (filter (lambda (x) (not (void? x))) groups-with-voids))))
 ;;   (do
-;;     [groups-list <- (sep-by/p (absolute-indentation/p line) newlines/p)]
-;;     (pure (apply append groups-list))))
-  
+;;     [lines <- (many/p
+;;                 (do
+;;                    (absolute-indentation/p
+;;                      (or/p
+;;                        (do
+;;                          semicolon/p
+;;                          (many/p semicolon/p)
+;;                          [remaining-groups <- remaining-groups/p]
+;;                          (pure remaining-groups))
+;;                        (do
+;;                          [group <- (group/p #:in-alt? is-in-alt)]
+;;                          (or/p
+;;                            (do
+;;                              separator
+;;                              [remaining-groups <- remaining-groups/p]
+;;                              (pure `(,group . ,remaining-groups)))
+;;                            (pure `(,group))))
+;;                        (do
+;;                          comment
+;;                          (or/p
+;;                            (do
+;;                              separator
+;;                              [remaining-groups <- remaining-groups/p]
+;;                              (pure remaining-groups))
+;;                            (pure '()))))))
+;;                 #:sep newlines/p)]
+;;     (pure (apply append lines))))
+
 
 (define (group+/p #:in-alt? [is-in-alt #f])
   (define comment (group-comment #:in-alt? is-in-alt))
