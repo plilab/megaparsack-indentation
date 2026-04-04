@@ -92,21 +92,30 @@
 (define (syntax-indentation box)
   (add1 (srcloc-column (syntax-box-srcloc box))))
   
-(define ((make-guard-error state) token)
-  (define indentation (syntax-indentation token))
-  (format "Token ~a at ~a" token (make-indentation-error state indentation)))
-
+;; indent/p takes a parser that parses a token and returns a parser that
+;; validates that the token has valid indentation.
+;;
+;; indent/p can only take token parsers because of a technical reason. It has
+;; to consume *some* output to work. This means that if indent/p sent a
+;; consuming error on indentation failure, there's no way to actually recover
+;; without try. Instead, this implementation assumes that any parser given
+;; always fails with an empty error, which is usually satisfied by token
+;; parsers.
 (define (indent/p parser)
   (do
-      [previous-state <- (indent-parameter)]
-    [box <- (guard/p (syntax-box/p parser)
-                     (lambda (val) (valid-indentation? previous-state (syntax-indentation val)))
-                     (format "~a" previous-state)
-                     (make-guard-error previous-state))]
+    [previous-state <- (indent-parameter)]
+    [box <- (syntax-box/p parser)]
     (define box-indentation (syntax-indentation box))
-    (define new-state (update-indentation previous-state box-indentation))
-    (indent-parameter new-state)
-    (pure (syntax-box-datum box))))
+    (cond
+      [(valid-indentation? previous-state box-indentation)
+       (define new-state (update-indentation previous-state box-indentation))
+       (do
+         (indent-parameter new-state)
+         (pure (syntax-box-datum box)))]
+      [else (fail/p (message
+                      (syntax-box-srcloc box)
+                      (format "Token ~a at ~a" box (make-indentation-error previous-state box-indentation))
+                      (list (format "~a" previous-state))))])))
 
 
 (define/contract (local-token-mode/p relation-transformer parser)
