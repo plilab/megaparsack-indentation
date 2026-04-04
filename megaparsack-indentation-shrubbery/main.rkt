@@ -729,12 +729,28 @@
 
 (module+ main
   (require racket/file)
+  (define (skip-lang-prefix! port)
+    ;; This pattern skips:
+    ;; 1. An optional shebang line
+    ;; 2. Any combination of whitespace, line comments (;), and block comments (#|...|#)
+    ;; 3. The #lang line itself
+    (define pattern 
+      #px"^(?:#![^\r\n]*\r?\n)?(?:\\s+|;[^\r\n]*\r?\n|(?s:#\\|.*?\\|#))*#lang[^\r\n]*\r?\n?")
+    
+    (regexp-match pattern port)
+    (void))
+
+  (define (make-port filename)
+    (define in (open-input-string (file->string filename)))
+
+    (port-count-lines! in)
+    in)
 
   (define (lex filename)
-    (lex (file->string filename)))
+    (lex (make-port filename)))
 
   (define (parse filename)
-    (shrubbery-parser (file->string filename)))
+    (shrubbery-parser (make-port filename)))
 
   (define args (current-command-line-arguments))
 
