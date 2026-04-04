@@ -6,7 +6,10 @@
 (require data/applicative)
 (require megaparsack)
 
-(provide sep-by/p sep-end-by/p skip-many-until/p)
+(provide ?/p sep-by/p sep-end-by/p skip-many-until/p)
+
+(define (?/p parser)
+  (or/p parser void/p))
 
 (define (sep-end-by%/p parser/p separator/p)
   (do [x <- parser/p]

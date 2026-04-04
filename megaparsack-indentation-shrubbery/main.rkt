@@ -53,7 +53,7 @@
 (define (lexeme/p name)
   (do
     [token <- (token/p name)]
-    (or/p non-newline-whitespace/p void/p)
+    (?/p non-newline-whitespace/p)
     (pure token)))
 
 ;; token-pred/p: string? predicate/c -> boolean?
@@ -85,7 +85,7 @@
 (define (lexeme-pred/p name pred)
   (do
     [token <- (token-pred/p name pred)]
-    (or/p non-newline-whitespace/p void/p)
+    (?/p non-newline-whitespace/p)
     (pure token)))
 
 (define (lexeme-string=/p name str)
@@ -401,7 +401,7 @@
 (define at-text
   (do
     (token/p 'at-opener)
-    [contents-or-ats <- (many/p (syntax-box/p (do (or/p at-comment void/p) (or/p (token/p 'at-content) (delay/p at/p)))))]
+    [contents-or-ats <- (many/p (syntax-box/p (do (?/p at-comment) (or/p (token/p 'at-content) (delay/p at/p)))))]
     (token/p 'at-closer)
     (pure `(group (brackets . ,(process-at-text contents-or-ats))))))
  
@@ -431,7 +431,7 @@
                                      (do
                                        [texts <- (many+/p at-text)]
                                        (pure `(at (parens ,@texts))))))]
-    (or/p non-newline-whitespace/p void/p)
+    (?/p non-newline-whitespace/p)
     (pure at)))
       
 (define (splice-at-notation line)
@@ -640,6 +640,7 @@
 ;; https://docs.racket-lang.org/shrubbery/group-and-block.html are the same thing?
 (define document/p
   (do
+    (?/p non-newline-whitespace/p)
     newlines/p
     [groups <- (many-groups/p)]
     newlines/p
