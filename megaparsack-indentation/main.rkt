@@ -102,20 +102,21 @@
 ;; always fails with an empty error, which is usually satisfied by token
 ;; parsers.
 (define (indent/p parser)
-  (do
-    [previous-state <- (indent-parameter)]
-    [box <- (syntax-box/p parser)]
-    (define box-indentation (syntax-indentation box))
-    (cond
-      [(valid-indentation? previous-state box-indentation)
-       (define new-state (update-indentation previous-state box-indentation))
-       (do
-         (indent-parameter new-state)
-         (pure (syntax-box-datum box)))]
-      [else (fail/p (message
-                      (syntax-box-srcloc box)
-                      (format "Token ~a at ~a" box (make-indentation-error previous-state box-indentation))
-                      (list (format "~a" previous-state))))])))
+  (try/p
+    (do
+     [previous-state <- (indent-parameter)]
+     [box <- (syntax-box/p parser)]
+     (define box-indentation (syntax-indentation box))
+     (cond
+       [(valid-indentation? previous-state box-indentation)
+        (define new-state (update-indentation previous-state box-indentation))
+        (do
+          (indent-parameter new-state)
+          (pure (syntax-box-datum box)))]
+       [else (fail/p (message
+                       (syntax-box-srcloc box)
+                       (format "Token ~a at ~a" box (make-indentation-error previous-state box-indentation))
+                       (list (format "~a" previous-state))))]))))
 
 
 (define/contract (local-token-mode/p relation-transformer parser)

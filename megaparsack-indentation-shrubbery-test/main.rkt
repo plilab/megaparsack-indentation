@@ -15,14 +15,14 @@
 ;; Creates a test case to compare between our parser and the reference parser
 (define (make-comparative-test filepath)
   (test-case
-   (path->string filepath)
-   (define-values (our-parse reference-parse) (parse-with-both filepath))
-   (cond
-     [(and (failure? our-parse) (failure? reference-parse))
-      (fail-check (format "Both failed"))]
-     [(failure? our-parse) (parse-result! our-parse)]
-     [(failure? reference-parse) (raise (from-either reference-parse))]
-     [else (check-sexp-equal? (from-either reference-parse) (from-either our-parse))])))
+    (path->string filepath)
+    (define-values (our-parse reference-parse) (parse-with-both filepath))
+    (cond
+      [(and (failure? our-parse) (failure? reference-parse))
+       (fail-check (format "Both failed"))]
+      [(failure? our-parse) (parse-result! our-parse)]
+      [(failure? reference-parse) (raise (from-either reference-parse))]
+      [else (check-sexp-equal? (from-either reference-parse) (from-either our-parse))])))
 
 
 (define (run-rhombus-compatibility-tests paths)
