@@ -180,7 +180,7 @@
                              line-separator))]
    (pure (apply append groups))))
 
-(define (sep-groups/p separator/p)
+(define (separated/p parser/p separator/p)
   (define rest
     (or/p
       (do
@@ -193,20 +193,44 @@
           (pure '())))
       (pure '())))
   (define aligned
-    (do
-      [x <- (absolute-indentation/p (group/p #:in-alt? #f))]
-      [xs <- rest]
-      (pure (cons x xs))))
+    (or/p
+      (do
+        (or/p
+          (do
+            (noncommittal/p (absolute-indentation/p (lexeme/p 'group-comment)))
+            parser/p)
+          (do
+            (local-indentation/p '* (lexeme/p 'group-comment))
+            newlines/p
+            (absolute-indentation/p parser/p)))
+        rest)
+      (do
+        [x <- (absolute-indentation/p parser/p)]
+        [xs <- rest]
+        (pure (cons x xs)))))
   (define inline
-    (do
-      [x <- (group/p #:in-alt? #f)]
-      [xs <- rest]
-      (pure (cons x xs))))
+    (or/p
+      (do
+        (local-indentation/p
+          '*
+          (do
+            (absolute-indentation/p (lexeme/p 'group-comment))
+            (or/p
+              (do newlines/p (absolute-indentation/p parser/p))
+              parser/p)))
+        rest)
+      (do
+        [x <- (local-indentation/p '* parser/p)]
+        [xs <- rest]
+        (pure (cons x xs)))))
   (or/p
     (do
       newlines/p
       aligned)
     (pure '())))
+
+(define (sep-groups/p separator/p)
+  (separated/p (group/p #:in-alt? #f) separator/p))
 
 
 (define (opener/p str)
@@ -604,15 +628,43 @@
                          (pure `(block . ,groups)))))
 
 (define alts/p
-  (do
-    [alts <- (many+/p
-              (absolute-indentation/p
-               (many+/p (try/p (do
-                                 (lexeme/p 'bar-operator)
-                                 [block <- (or/p guillemet/p block-in-alt/p)]
-                                 newlines/p
-                                 (pure block))))))]
-    (pure (cons 'alts (apply append alts)))))
+  (let ()
+    (define alt-branch
+      (try/p (do
+              (lexeme/p 'bar-operator)
+              (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))))
+    (define rest
+      (or/p
+        (delay/p inline)
+        (do
+          newlines/p
+          (delay/p aligned))
+        (pure '())))
+    (define aligned
+      (do
+        [x <- (absolute-indentation/p alt-branch)]
+        [xs <- rest]
+        (pure (cons x xs))))
+    (define inline
+      (do
+        [x <- alt-branch]
+        [xs <- rest]
+        (pure (cons x xs))))
+    (do
+      [alts <- aligned]
+      (pure `(alts . ,alts)))))
+  
+
+;; (define alts/p
+;;   (do
+;;     [alts <- (many+/p
+;;               (absolute-indentation/p
+;;                (many+/p (try/p (do
+;;                                  (lexeme/p 'bar-operator)
+;;                                  [block <- (or/p guillemet/p block-in-alt/p)]
+;;                                  newlines/p
+;;                                  (pure block))))))]
+;;     (pure (cons 'alts (apply append alts)))))
 
 
 (define (group-comment #:in-alt? [is-in-alt #f])
