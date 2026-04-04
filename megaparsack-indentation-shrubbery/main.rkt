@@ -595,11 +595,14 @@
                      [alts <- (?/p inlinable-alts)]
                      (pure (cons block alts)))
                    (do
-                     [block <- (?/p (cond [in-alt? block-in-alt/p] [else (do newlines/p block/p)]))]
+                     [block <- (cond [in-alt? block-in-alt/p] [else (do newlines/p block/p)])]
                      [alts <- (?/p (do newlines/p alts/p))]
-                     (pure (cons block alts))))]
+                     (pure (cons block alts)))
+                   (do
+                     [alts <- (do newlines/p alts/p)]
+                     (pure (cons (void) alts))))]
         (pure (match rest
-                [(cons (? void?) (? void?)) '()]
+                [(cons (? void?) (? void?)) (error "alts and block should not be void at the same time")]
                 [(cons block (? void?)) (list block)]
                 [(cons (? void?) alts) (list alts)]
                 [(cons block alts) (list block alts)])))))
