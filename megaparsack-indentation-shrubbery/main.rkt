@@ -193,18 +193,18 @@
     (pure '())))
 
 (define (sequence-rest-optional-separator parser/p separator/p)
+  (define aligned
+    (do
+      newlines/p
+      (sequence-aligned parser/p separator/p sequence-rest-optional-separator)))
   (or/p
     (do
       (local-indentation/p '* separator/p)
       (or/p
-        (sequence-inline parser/p separator/p sequence-rest)
-        (do
-          newlines/p
-          (sequence-aligned parser/p separator/p sequence-rest))
+        (sequence-inline parser/p separator/p sequence-rest-optional-separator)
+        aligned
         (pure '())))
-    (do
-      newlines/p
-      (sequence-aligned parser/p separator/p sequence-rest))
+    aligned
     (pure '())))
 
 (define (sequence-inline parser/p separator/p rest/p)
