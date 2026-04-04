@@ -409,8 +409,8 @@
 
   (match xs
     [(list) '()]
-    [(list a)
-     `((group ,(syntax-box-datum a)))]
+    [(list (syntax-box (? string? a) _))
+     `((group ,a))]
     [(list (syntax-box "\n" _) (syntax-box (pregexp #px"[ \t]+") _))
      '((group "\n"))]
     [(list-rest (syntax-box "\n" _) left-trimmed)
