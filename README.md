@@ -2,7 +2,7 @@
 
 ## Licensing
 
-This repo is licensed with the dual Apache-2.0 and MIT licenses, other than the
+This repo is licensed with the dual Apache 2.0 or MIT license, other than the
 following files.
 
 - `megaparsack-indentation-shrubbery/lex.rkt`
