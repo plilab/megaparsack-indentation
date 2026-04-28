@@ -1,4 +1,13 @@
-# Megaparsack-indentation
+# Megaparsack-Indentation
+
+This library implements a set of indentation combinators on top of
+[Megaparsack](https://github.com/lexi-lambda/megaparsack). The repo contains
+the library implementation at `megaparsack-indentation` and an example parser
+for the [Shrubbery Language](https://docs.racket-lang.org/shrubbery/index.html)
+at `megaparsack-indentation-shrubbery`.
+
+This library is based on the indentation-sensitive PEG extension defined by
+[Michael D. Adams and Ömer S. Ağacan](https://dl.acm.org/doi/10.1145/2633357.2633369).
 
 ## Licensing
 
