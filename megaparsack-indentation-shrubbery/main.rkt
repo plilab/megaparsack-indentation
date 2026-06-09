@@ -271,20 +271,16 @@
 ;; make-opener-closer/p: (->* (string? string? parser?) (#:newline-separated boolean?) parser?)
 ;; 
 ;; Parses a group of parsers separated by separator/p between an opener and a
-;; closer token. The handling of separator/p and optional newline separation is
-;; done using separated-groups/p.
+;; closer token.
 ;;
 ;; Parameters
 ;;  identifier - Used to disambiguate output between different opener-closer pairs.
 ;;  opener - Parser to parse the opener
 ;;  closer - Parser to parse the closer
 ;;  separator - Parser used to separate groups
-;;  #:newline-separated? - Whether newlines can be used as separators instead of separator/p (default #f)
 ;;
 ;; Returns:
-;;  Parser that parses an opener, a list of groups separated by separator/p (or
-;;  newlines if #:newline-separated? is true) and then a closer, and then
-;;  returns a list of groups prefixed by the identifier.
+;;  Parser that parses an opener, a list of groups separated by separator/p
 ;;
 ;;  For example, parsing `(a, b, c)` with (make-opener-closer/p 'paren "(" ")" comma/p) gives us (parens (group a) (group b) (group c))
 (define (make-opener-closer/p identifier opener closer separator)
@@ -303,23 +299,22 @@
     (delay/p (group*/p))))
 
 (define quotes/p
-  (do
-    [groups <- (or/p
-                 (do
-                   (label/p "'«" (do (noncommittal/p (token-string=/p 'opener "'")) (opener/p "«")))
-                   newlines/p
-                   [groups <- (local-indentation/p '* alts-or-group*/p)]
-                   newlines/p
-                   (local-indentation/p '* (label/p "'»" (do (token-string=/p 'closer "»") (closer/p "'"))))
-                   (pure groups))
-                 (do
-                   (opener/p "'")
-                   newlines/p
-                   [groups <- (local-indentation/p '* alts-or-group*/p)]
-                   newlines/p
-                   (local-indentation/p '* (closer/p "'"))
-                   (pure groups)))]
-    (pure `(quotes . ,groups))))
+  (let ([inner (do
+                 newlines/p
+                 [groups <- (local-indentation/p '* alts-or-group*/p)]
+                 newlines/p
+                 (pure groups))])
+    (do
+      [groups <- (or/p
+                   (between/p
+                     (label/p "'«" (do (noncommittal/p (token-string=/p 'opener "'")) (opener/p "«")))
+                     (local-indentation/p '* (label/p "'»" (do (token-string=/p 'closer "»") (closer/p "'"))))
+                     inner)
+                   (between/p
+                     (opener/p "'")
+                     (local-indentation/p '* (closer/p "'"))
+                     inner))]
+      (pure `(quotes . ,groups)))))
 
                  
 
