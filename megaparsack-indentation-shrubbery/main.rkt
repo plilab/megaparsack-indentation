@@ -178,6 +178,22 @@
     aligned
     (pure acc)))
 
+(define (sequence-rest-optional-trailing-and-leading parser/p separator/p acc)
+  (define aligned
+    (do
+      newlines/p
+      (?/p separator/p)
+      (sequence-aligned parser/p separator/p sequence-rest-optional-trailing-and-leading acc)))
+  (or/p
+    (do
+      (local-indentation/p '* separator/p)
+      (or/p
+        (sequence-inline parser/p separator/p sequence-rest-optional-trailing-and-leading acc)
+        aligned
+        (pure acc)))
+    aligned
+    (pure acc)))
+
 (define (sequence-inline parser/p separator/p rest/p acc)
   (define (rest acc) (rest/p parser/p separator/p acc))
   (or/p
@@ -223,11 +239,11 @@
   (or/p (sequence+/p parser/p separator/p)
         (pure '())))
 
-(define (sequence-optional-separator+/p parser/p separator/p)
-  (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-separator '())))
+(define (sequence-optional-leading-and-trailing+/p parser/p separator/p)
+  (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-trailing-and-leading '())))
 
-(define (sequence-optional-separator/p parser/p separator/p)
-  (or/p (sequence-optional-separator+/p parser/p separator/p)
+(define (sequence-optional-trailing/p parser/p separator/p)
+  (or/p (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-separator '()))
         (pure '())))
 
 ;;;; -------------------
@@ -441,7 +457,7 @@
     [groups <- (between/p
                  (opener/p "(")
                  (closer/p ")")
-                 (sequence-optional-separator/p (delay/p (group/p #:in-alt? #t)) comma/p))]
+                 (sequence-optional-trailing/p (delay/p (group/p #:in-alt? #t)) comma/p))]
     (pure groups)))
 
 (define (flip-at-bracket ch)
@@ -583,7 +599,7 @@
   (define inlinable-alts
     (cond
       [in-alt? (do newlines/p alts/p)]
-      [else (or/p (local-indentation/p '> alts/p) (do newlines/p alts/p))]))
+      [else (or/p (local-indentation/p '* alts/p) (do newlines/p alts/p))]))
   (define rest/p
     (or/p
       at-end/p
@@ -651,7 +667,7 @@
 (define (group-sequence #:in-alt? [in-alt? #f])
   (define separator/p (many+/p semicolon/p))
   (define parser/p (group/p #:in-alt? in-alt?))
-  (sequence-optional-separator+/p parser/p separator/p))
+  (sequence-optional-leading-and-trailing+/p parser/p separator/p))
 
 (define (group*/p #:in-alt? [in-alt? #f])
   (or/p
@@ -729,6 +745,7 @@
 
 (module+ main
   (require racket/file)
+  (require racket/pretty)
   (define (skip-lang-prefix! port)
     ;; This pattern skips:
     ;; 1. An optional shebang line
@@ -750,7 +767,9 @@
     (lex (make-port filename)))
 
   (define (parse filename)
-    (shrubbery-parser (make-port filename)))
+    (define in (make-port filename))
+    (skip-lang-prefix! in)
+    (pretty-print (parse-result! (shrubbery-parser in))))
 
   (define args (current-command-line-arguments))
 
