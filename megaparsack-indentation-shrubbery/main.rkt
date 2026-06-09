@@ -163,16 +163,16 @@
         (pure acc)))
     (pure acc)))
 
-(define (sequence-rest-optional-separator parser/p separator/p acc)
+(define (sequence-rest-optional-trailing parser/p separator/p acc)
   (define aligned
     (do
       newlines/p
-      (sequence-aligned parser/p separator/p sequence-rest-optional-separator acc)))
+      (sequence-aligned parser/p separator/p sequence-rest-optional-trailing acc)))
   (or/p
     (do
       (local-indentation/p '* separator/p)
       (or/p
-        (sequence-inline parser/p separator/p sequence-rest-optional-separator acc)
+        (sequence-inline parser/p separator/p sequence-rest-optional-trailing acc)
         aligned
         (pure acc)))
     aligned
@@ -239,11 +239,11 @@
   (or/p (sequence+/p parser/p separator/p)
         (pure '())))
 
-(define (sequence-optional-leading-and-trailing+/p parser/p separator/p)
+(define (sequence-optional-trailing-and-leading+/p parser/p separator/p)
   (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-trailing-and-leading '())))
 
 (define (sequence-optional-trailing/p parser/p separator/p)
-  (or/p (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-separator '()))
+  (or/p (rev/p (sequence-aligned parser/p separator/p sequence-rest-optional-trailing '()))
         (pure '())))
 
 ;;;; -------------------
@@ -667,7 +667,7 @@
 (define (group-sequence #:in-alt? [in-alt? #f])
   (define separator/p (many+/p semicolon/p))
   (define parser/p (group/p #:in-alt? in-alt?))
-  (sequence-optional-leading-and-trailing+/p parser/p separator/p))
+  (sequence-optional-trailing-and-leading+/p parser/p separator/p))
 
 (define (group*/p #:in-alt? [in-alt? #f])
   (or/p
