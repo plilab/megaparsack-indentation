@@ -616,7 +616,7 @@
   (define inlinable-alts
     (cond
       [in-alt? (do newlines/p alts/p)]
-      [else (or/p (local-indentation/p '* alts/p) (do newlines/p alts/p))]))
+      [else (or/p (local-indentation/p '> alts/p) (do newlines/p alts/p))]))
   (define rest/p
     (or/p
       at-end/p
@@ -674,8 +674,8 @@
 
 (define alts/p
   (let ([alt-branch (do
-                      (lexeme/p 'bar-operator)
-                      (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))])
+                     (lexeme/p 'bar-operator)
+                     (or/p guillemet/p block-in-alt/p (do newlines/p block/p)))])
     (do
       [alts <- (sequence+/p alt-branch void/p)]
       (pure `(alts . ,alts)))))
