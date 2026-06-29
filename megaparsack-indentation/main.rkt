@@ -13,16 +13,18 @@
   (require rackunit))
 
 (provide
- indent/p
- absolute-indentation/p
- local-indentation/p
- local-token-mode/p)
+  indent-init
+  indent/p
+  absolute-indentation/p
+  local-indentation/p
+  local-token-mode/p)
 
 (define inf-indentation
   (string->uninterned-symbol "megaparsack-indentation:infinite"))
-
 (define (inf-indentation? a)
   (eq? inf-indentation a))
+
+(define range-parameter (make-parser-parameter (cons 0 inf-indentation)))
 
 
 (define (relation? a)
@@ -32,37 +34,65 @@
       (eq? '* a)
       (and (pair? a) (eq? (car a) 'const) (not (inf-indentation? a)))))
 
-
-; TODO Implement a gen:custom-write interface on this to make the errors look nicer
-(struct indent-state (lower upper absmode relation)
-  #:transparent
-  #:guard (lambda (lower upper absmode relation _name)
-            (unless (or (inf-indentation? upper) (lower . <= . upper))
-              (error "Lower bound is greater than upper bound"))
-            (values lower upper absmode relation)))
-
+(struct indent-state (absmode relation) #:transparent)
+(define state-param (make-parser-parameter (indent-state #f '>)))
 (define (effective-relation state)
   (if (indent-state-absmode state)
       '=
       (indent-state-relation state)))
 
-;; The central indentation store. As it is a parser parameter, it is local to every parser invocation.
-(define indent-parameter (make-parser-parameter (indent-state 0 inf-indentation #f '>)))
 
-(define (valid-indentation? state indent)
-  (match-define (indent-state lower upper _ _) state)
-  (match (effective-relation state)
+(struct op (<= add1 sub1 bottom get wrap/p unwrap))
+(define ((flip f) x y) (f y x))
+(define (op-> op) (compose1 not (op-<= op)))
+(define (op->= op) (flip (op-<= op)))
+(define (op-< op) (compose1 not (flip (op-<= op))))
+
+(define op-param
+  (make-parser-parameter
+    (op
+      <=
+      add1
+      sub1
+      0
+      (lambda (box) (add1 (srcloc-column (syntax-box-srcloc box))))
+      syntax-box/p
+      syntax-box-datum)))
+
+(define (indent-init #:<= [<= <=]
+                     #:add1 [add1 add1]
+                     #:sub1 [sub1 sub1]
+                     #:bottom [bottom 0]
+                     #:get [get (lambda (box) (add1 (srcloc-column (syntax-box-srcloc box))))]
+                     #:wrap/p [wrap/p syntax-box/p]
+                     #:unwrap [unwrap syntax-box-datum])
+  (do
+    (range-parameter (cons bottom inf-indentation))
+    (op-param 
+      (op
+        <=
+        add1
+        sub1
+        bottom
+        get
+        wrap/p
+        unwrap))))
+
+
+(define (valid-indentation? range rel op indent)
+  (match-define (cons lower upper) range)
+  (match rel
     [(cons 'const x) (= x indent)]
     ['* #t]
-    ['> (> indent lower)]
-    ['>= (>= indent lower)]
-    ['= (and (<= lower indent) (or (inf-indentation? upper) (<= indent upper)))]))
+    ['> ((op-> op) indent lower)]
+    ['>= ((op->= op) indent lower)]
+    ['= (and ((op-<= op) lower indent) (or (inf-indentation? upper) ((op-<= op) indent upper)))]))
 
-(define (make-indentation-error state indentation)
-  (match-define (indent-state lower upper _ _) state)
+(define (make-indentation-error range rel indentation)
+  (match-define (cons lower upper) range)
   (define (make-error place)
     (format "indentation ~a. Expecting ~a." indentation place))
-  (match (effective-relation state)
+  (match rel
     [(cons 'const x) (make-error (~a "indentation" x #:separator " "))]
     ['* (error "* relation in indentation state should not fail")]
     ['> (make-error (~a "indentation greater than" lower #:separator " "))]
@@ -74,27 +104,19 @@
 ;;
 ;; This function assumes that the indentation is already validated by
 ;; `valid-indentation?` and *does not* check it again.
-(define (update-indentation state indent)
-  ;; Finds the minimum between the indentation and the potentially infinite upper indent
-  (define (upper-update new-upper-bound upper)
+(define (update-indentation range rel op indent)
+  (define (indent-min indent upper)
     (cond
-      [(or (inf-indentation? upper) (<= new-upper-bound upper)) new-upper-bound]
+      [(or (inf-indentation? upper) ((op-<= op) indent upper)) indent]
       [else upper]))
 
-  (match-define (indent-state _ upper _ _) state)
+  (match-define (cons lower upper) range)
+  (match rel
+    [(or (cons 'const _) '*) range]
+    ['>= (cons lower (indent-min indent upper))]
+    ['> (cons lower (indent-min ((op-sub1 op) indent) upper))]
+    ['= (cons indent indent)]))
 
-  (define updated
-    (match (effective-relation state)
-      [(cons 'const _) state]
-      ['* state]
-      ['> (struct-copy indent-state state [upper (upper-update (sub1 indent) upper)])]
-      ['>= (struct-copy indent-state state [upper (upper-update indent upper)])]
-      ['= (struct-copy indent-state state [lower indent] [upper indent])]))
-
-  (struct-copy indent-state updated [absmode #f]))
-
-(define (syntax-box-indentation box)
-  (add1 (srcloc-column (syntax-box-srcloc box))))
   
 ;; indent/p takes a parser that parses a token and returns a parser that
 ;; parses the token only if it has a valid indentation.
@@ -108,68 +130,72 @@
 (define (indent/p parser)
   (try/p
     (do
-     [previous-state <- (indent-parameter)]
-     [box <- (syntax-box/p parser)]
-     (define box-indentation (syntax-box-indentation box))
+
+     [state <- (state-param)]
+     (define relation (effective-relation state))
+
+     [prev-range <- (range-parameter)]
+
+     [op <- (op-param)]
+
+     [box <- ((op-wrap/p op) parser)]
+
+     (define indent ((op-get op) box))
      (cond
-       [(valid-indentation? previous-state box-indentation)
-        (define new-state (update-indentation previous-state box-indentation))
+       [(valid-indentation? prev-range relation op indent)
+        (define new-range (update-indentation prev-range relation op indent))
         (do
-          (indent-parameter new-state)
-          (pure (syntax-box-datum box)))]
+          (range-parameter new-range)
+          (state-param (struct-copy indent-state state [absmode #f]))
+          (pure ((op-unwrap op) box)))]
        [else (fail/p (message
                        (syntax-box-srcloc box)
-                       (format "Token ~a at ~a" box (make-indentation-error previous-state box-indentation))
-                       (list (format "~a" previous-state))))]))))
+                       (format "Token ~a at ~a" box (make-indentation-error prev-range relation indent))
+                       (list (format "~a(~a . ~a)" relation (car prev-range) (cdr prev-range)))))]))))
 
 
 (define/contract (local-token-mode/p relation-transformer parser)
   (-> (-> relation? relation?) parser? parser?)
   (do
-    [old-state <- (indent-parameter)]
+    [state <- (state-param)]
     (parameterize/p
-      ([indent-parameter (struct-copy indent-state
-                                      old-state
-                                      [relation (relation-transformer (indent-state-relation old-state))])])
+      ([state-param (struct-copy indent-state state
+                                 [relation (relation-transformer (indent-state-relation state))])])
       parser)))
 
-(define (make-local-state relation outer-state)
-  (define (compute-local-range relation outer-lower outer-upper)
-    (match relation
-      ['* (values 0 inf-indentation)]
-      ['= (values outer-lower outer-upper)]
-      [(cons 'const x) (values x x)]
-      ['>= (values outer-lower inf-indentation)]
-      ['> (values (add1 outer-lower) inf-indentation)]))
 
-  (match-define (indent-state lower upper _ _ ) outer-state)
-  (define-values (local-lower local-upper) (compute-local-range relation lower upper))
-  (struct-copy indent-state outer-state [lower local-lower] [upper local-upper]))
-
-
-(define (update-outer-from-local-state relation #:outer outer-state #:local local-state)
-  (match-define (indent-state outer-lower outer-upper _ _) outer-state)
-  (match-define (indent-state _ local-upper _ _) local-state)
-  (match relation
-    ['= local-state]
-    ['* (struct-copy indent-state local-state [lower outer-lower] [upper outer-upper])]
-    [(cons 'const _) (struct-copy indent-state local-state [lower outer-lower] [upper outer-upper])]
-    ['>= (struct-copy indent-state local-state [lower outer-lower])]
-    ['> (define restricted-upper
-          (cond
-            [(or (inf-indentation? local-upper) (< outer-upper local-upper)) outer-upper]
-            [(> local-upper 0) (sub1 local-upper)]
-            [else (error "local-indentation: assertion failed: local-upper > 0")]))
-        (struct-copy indent-state local-state [lower outer-lower] [upper restricted-upper])]))
-
-(define/contract (local-indentation/p relation parser)
+(define/contract (local-indentation/p cmp parser)
   (-> relation? parser? parser?)
+
+  (define (make-local-range op outer-range)
+    (match-define (cons lower upper) outer-range)
+    (match cmp
+          [(cons 'const x) (cons x x)]
+          ['* (cons (op-bottom op) inf-indentation)]
+          ['= (cons lower upper)]
+          ['>= (cons lower inf-indentation)]
+          ['> (cons (add1 lower) inf-indentation)]))
+
+  (define (update-outer-range op #:outer outer-range #:local local-range)
+    (match-define (cons outer-lower outer-upper) outer-range)
+    (match-define (cons _local-lower local-upper) local-range)
+    (match cmp
+      [(or (cons 'const _) '*) outer-range]
+      ['= local-range]
+      ['>= (cons outer-lower local-upper)]
+      ['> (define restricted-upper ; Minimum of outer's upper and (lower's upper - 1)
+            (cond
+              [(or (inf-indentation? local-upper) ((op-< op) outer-upper local-upper)) outer-upper]
+              [((op-> op) local-upper (op-bottom op)) (sub1 local-upper)]
+              [else (error "local-indentation: assertion failed: local-upper > 0")]))
+          (cons outer-lower restricted-upper)]))
+
   (do
-    [(and outer-state (indent-state _ _ absmode _)) <- (indent-parameter)] ; previous indentation interval
+    [(indent-state absmode _) <- (state-param)] ; previous indentation interval
     (cond
       ;; Absmode is essentially a no-op for local indentation. This
       ;; absmode short-circuit isn't really necessary though, as it is the same
-      ;; as '=, and '= similarly does the no-op explicitly.
+      ;; as '=, and '= does the no-op explicitly.
       ;;
       ;; TODO wonder if this is better handled by make-local-state and
       ;; update-outer-from-local-state. On the one hand, this is less code; on
@@ -178,22 +204,28 @@
       [absmode parser]
       [else
        (do
-         (indent-parameter (make-local-state relation outer-state)) ; set local interval
-         [parsed-expression <- parser] ; run local parser
-         [local-state <- (indent-parameter)] ; get the local interval after parser's execution
-         (indent-parameter (update-outer-from-local-state relation #:outer outer-state #:local local-state)) ; Calculate the indentation range of subsequent parsers from local indentation range
-         (pure parsed-expression))])))
+        [op <- (op-param)]
+
+        [outer-range <- (range-parameter)]
+        (range-parameter (make-local-range op outer-range))
+
+        [parsed-expression <- parser]
+
+        [local-range <- (range-parameter)]
+        (range-parameter (update-outer-range op #:outer outer-range #:local local-range))
+
+        (pure parsed-expression))])))
 
 (define/contract (absolute-indentation/p parser #:local? [local? #f])
   (-> parser? parser?)
   (do
-    [(and outer-state (indent-state _ _ outer-absmode _)) <- (indent-parameter)]
-    (indent-parameter (struct-copy indent-state outer-state [absmode #t]))
+    [(and outer-state (indent-state outer-absmode _)) <- (state-param)]
+    (state-param (struct-copy indent-state outer-state [absmode #t]))
     [parsed-expression <- parser]
-    [(and local-state (indent-state _ _ local-absmode _)) <- (indent-parameter)]
-    (indent-parameter (struct-copy indent-state local-state [absmode (if local?
-                                                                         outer-absmode
-                                                                         (and outer-absmode local-absmode))]))
+    [(and local-state (indent-state local-absmode _)) <- (state-param)]
+    (state-param (struct-copy indent-state local-state [absmode (if local?
+                                                                    outer-absmode
+                                                                    (and outer-absmode local-absmode))]))
     (pure parsed-expression)))
 
 

@@ -4,6 +4,7 @@
 (require racket/match)
 (require racket/list)
 (require racket/string)
+(require racket/function)
 (require racket/syntax-srcloc)
 (require data/monad)
 (require data/applicative)
@@ -14,9 +15,19 @@
 
 (require "lex.rkt")
 (require "utils.rkt")
+(require "private/column.rkt")
 
 (provide shrubbery-parser
          document/p)
+
+(define parser-init
+  (indent-init #:<= column<=?
+               #:add1 '()
+               #:sub1 '()
+               #:bottom 0
+               #:get (lambda (token) (token-column token))
+               #:wrap/p identity
+               #:unwrap identity))
 
 ;;;; ------------------------
 ;;;; Token and lexeme parsers
@@ -733,7 +744,7 @@
    (lex-all in (lambda (token explanation) (raise (error (cons token explanation)))))))
 
 (define (shrubbery-parser str)
-  (parse document/p (lex str)))
+  (parse (do parser-init document/p) (lex str)))
 
 
 ;;;; Testing
