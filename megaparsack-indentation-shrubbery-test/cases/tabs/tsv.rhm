@@ -1,0 +1,12 @@
+#!lang shrubbery
+
+// example of tab-separated values
+a @{
+name	age	city	score
+Alice	28	New York	94.5
+Bob	34	London	87.2
+Carol	22	Tokyo	91.8
+David	45	Berlin	78.3
+Eve	31	Sydney	88.9} | b
+   	  	      	        c
+

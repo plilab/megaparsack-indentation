@@ -1267,10 +1267,12 @@
 (define (token-line t)
   (token-start-line t))
 
-(define (token-column t)
-  (if (eq? (token-name t) 'bar-operator)
-      (column+ 0.5 (token-start-column t))
-      (token-start-column t)))
+;; (define (token-column t)
+;;   (if (eq? (token-name t) 'bar-operator)
+;;       (column+ 0.5 (token-start-column t))
+;;       (token-start-column t)))
+
+(define (token-column t) (token-start-column t))
 
 (define (token-end-line t)
   (+ (token-start-line t)

@@ -20,12 +20,23 @@
 (provide shrubbery-parser
          document/p)
 
+(define (column-sub1 column)
+  (match column
+    [(? integer? c) (max 0 (sub1 c))]
+    [(cons spaces rest) #:when (> spaces 0)
+     (cons (sub1 spaces) rest)]
+    [(list* 0 tabs rest) #:when (> tabs 0)
+     (list* 0 (sub1 tabs) rest)]
+    [(list* 0 0 rest)
+     (column-sub1 rest)]
+    [_ 0]))
+
 (define parser-init
   (indent-init #:<= column<=?
-               #:add1 '()
-               #:sub1 '()
+               #:sub1 column-sub1
                #:bottom 0
                #:get (lambda (token) (token-column token))
+               #:srcloc (lambda (token) (syntax-srcloc (token-value token)))
                #:wrap/p identity
                #:unwrap identity))
 

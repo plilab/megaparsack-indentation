@@ -1,0 +1,17 @@
+#!lang shrubbery
+a b c d (
+	a,	b,	c:
+	  	  	 d
+)
+
+"	" {b:
+ 	    c}
+
+@{	@(a:
+  	   b)}
+
+a @{	} | b
+    	    c
+
+a /*	*/ | b
+    	   | c

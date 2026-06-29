@@ -24,7 +24,9 @@
 (define (inf-indentation? a)
   (eq? inf-indentation a))
 
-(define range-parameter (make-parser-parameter (cons 0 inf-indentation)))
+(struct bound (value strict-steps) #:transparent)
+(struct indent-range (lower upper) #:transparent)
+(define range-parameter (make-parser-parameter (indent-range (bound 0 #t) inf-indentation)))
 
 
 (define (relation? a)
@@ -35,14 +37,14 @@
       (and (pair? a) (eq? (car a) 'const) (not (inf-indentation? a)))))
 
 (struct indent-state (absmode relation) #:transparent)
-(define state-param (make-parser-parameter (indent-state #f '>)))
+(define state-param (make-parser-parameter (indent-state #f '>=)))
 (define (effective-relation state)
   (if (indent-state-absmode state)
       '=
       (indent-state-relation state)))
 
 
-(struct op (<= add1 sub1 bottom get wrap/p unwrap))
+(struct op (<= sub1 bottom get srcloc wrap/p unwrap))
 (define ((flip f) x y) (f y x))
 (define (op-> op) (compose1 not (op-<= op)))
 (define (op->= op) (flip (op-<= op)))
@@ -52,44 +54,60 @@
   (make-parser-parameter
     (op
       <=
-      add1
       sub1
       0
       (lambda (box) (add1 (srcloc-column (syntax-box-srcloc box))))
+      (lambda (box) (syntax-box-srcloc box))
       syntax-box/p
       syntax-box-datum)))
 
 (define (indent-init #:<= [<= <=]
-                     #:add1 [add1 add1]
                      #:sub1 [sub1 sub1]
                      #:bottom [bottom 0]
                      #:get [get (lambda (box) (add1 (srcloc-column (syntax-box-srcloc box))))]
+                     #:srcloc [srcloc (lambda (box) (syntax-box-srcloc box))]
                      #:wrap/p [wrap/p syntax-box/p]
                      #:unwrap [unwrap syntax-box-datum])
   (do
-    (range-parameter (cons bottom inf-indentation))
+    (range-parameter (indent-range (bound bottom 0) inf-indentation))
     (op-param 
       (op
         <=
-        add1
         sub1
         bottom
         get
+        srcloc
         wrap/p
         unwrap))))
 
 
 (define (valid-indentation? range rel op indent)
-  (match-define (cons lower upper) range)
+  (match-define (indent-range (bound lower-value lower-steps) upper) range)
+
+  (define extra-step (if (eq? rel '>) 1 0))
+  (define total-steps (+ lower-steps extra-step))
+
+  ;; TODO Abstract this out as a function that the user can provide
+  (define-values (reduced-indent successful-steps)
+    (for/fold ([current indent]
+               [steps-taken 0])
+              ([_ (in-range total-steps)])
+      (if (eq? current (op-bottom op))
+          (values current steps-taken)
+          (values ((op-sub1 op) current) (add1 steps-taken)))))
+
+  (define satisfies-lower?
+    (and (= successful-steps total-steps)
+         ((op-<= op) lower-value reduced-indent)))
+
   (match rel
     [(cons 'const x) (= x indent)]
     ['* #t]
-    ['> ((op-> op) indent lower)]
-    ['>= ((op->= op) indent lower)]
-    ['= (and ((op-<= op) lower indent) (or (inf-indentation? upper) ((op-<= op) indent upper)))]))
+    [(or '> '>=) satisfies-lower?]
+    ['= (and satisfies-lower? (or (inf-indentation? upper) ((op-<= op) indent upper)))]))
 
 (define (make-indentation-error range rel indentation)
-  (match-define (cons lower upper) range)
+  (match-define (indent-range lower upper) range)
   (define (make-error place)
     (format "indentation ~a. Expecting ~a." indentation place))
   (match rel
@@ -110,14 +128,14 @@
       [(or (inf-indentation? upper) ((op-<= op) indent upper)) indent]
       [else upper]))
 
-  (match-define (cons lower upper) range)
+  (match-define (indent-range lower upper) range)
   (match rel
     [(or (cons 'const _) '*) range]
-    ['>= (cons lower (indent-min indent upper))]
-    ['> (cons lower (indent-min ((op-sub1 op) indent) upper))]
-    ['= (cons indent indent)]))
+    ['>= (indent-range lower (indent-min indent upper))]
+    ['> (indent-range lower (indent-min ((op-sub1 op) indent) upper))]
+    ['= (indent-range (bound indent 0) indent)]))
 
-  
+
 ;; indent/p takes a parser that parses a token and returns a parser that
 ;; parses the token only if it has a valid indentation.
 ;;
@@ -148,10 +166,12 @@
           (range-parameter new-range)
           (state-param (struct-copy indent-state state [absmode #f]))
           (pure ((op-unwrap op) box)))]
-       [else (fail/p (message
-                       (syntax-box-srcloc box)
-                       (format "Token ~a at ~a" box (make-indentation-error prev-range relation indent))
-                       (list (format "~a(~a . ~a)" relation (car prev-range) (cdr prev-range)))))]))))
+       [else
+         (match-define (indent-range (bound lower-value lower-steps) upper) prev-range)
+         (fail/p (message
+                   ((op-srcloc op) box)
+                   (format "Token ~a at ~a" box (make-indentation-error prev-range relation indent))
+                   (list (format "~a(~a+~a . ~a)" relation lower-value lower-steps upper))))]))))
 
 
 (define/contract (local-token-mode/p relation-transformer parser)
@@ -168,27 +188,27 @@
   (-> relation? parser? parser?)
 
   (define (make-local-range op outer-range)
-    (match-define (cons lower upper) outer-range)
+    (match-define (indent-range (and lower (bound lower-value lower-steps)) upper) outer-range)
     (match cmp
-          [(cons 'const x) (cons x x)]
-          ['* (cons (op-bottom op) inf-indentation)]
-          ['= (cons lower upper)]
-          ['>= (cons lower inf-indentation)]
-          ['> (cons (add1 lower) inf-indentation)]))
+          [(cons 'const x) (indent-range (bound x 0) x)]
+          ['* (indent-range (bound (op-bottom op) 0) inf-indentation)]
+          ['= (indent-range lower upper)]
+          ['>= (indent-range lower inf-indentation)]
+          ['> (indent-range (bound lower-value (add1 lower-steps)) inf-indentation)]))
 
   (define (update-outer-range op #:outer outer-range #:local local-range)
-    (match-define (cons outer-lower outer-upper) outer-range)
-    (match-define (cons _local-lower local-upper) local-range)
+    (match-define (indent-range outer-lower outer-upper) outer-range)
+    (match-define (indent-range _ local-upper) local-range)
     (match cmp
       [(or (cons 'const _) '*) outer-range]
       ['= local-range]
-      ['>= (cons outer-lower local-upper)]
+      ['>= (indent-range outer-lower local-upper)]
       ['> (define restricted-upper ; Minimum of outer's upper and (lower's upper - 1)
             (cond
               [(or (inf-indentation? local-upper) ((op-< op) outer-upper local-upper)) outer-upper]
-              [((op-> op) local-upper (op-bottom op)) (sub1 local-upper)]
+              [((op-> op) local-upper (op-bottom op)) ((op-sub1 sub1) local-upper)]
               [else (error "local-indentation: assertion failed: local-upper > 0")]))
-          (cons outer-lower restricted-upper)]))
+          (indent-range outer-lower restricted-upper)]))
 
   (do
     [(indent-state absmode _) <- (state-param)] ; previous indentation interval
