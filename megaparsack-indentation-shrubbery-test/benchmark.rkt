@@ -40,5 +40,3 @@
 
 (module+ main
   (bench-file (read-corpus corpus-path)))
-    
-  

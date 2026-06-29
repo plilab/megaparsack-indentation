@@ -16,6 +16,6 @@
   ;; 3. The #lang line itself
   (define pattern 
     #px"^(?:#![^\r\n]*\r?\n)?(?:\\s+|;[^\r\n]*\r?\n|(?s:#\\|.*?\\|#))*#lang[^\r\n]*\r?\n?")
-  
+
   (regexp-match pattern port)
   (void))
