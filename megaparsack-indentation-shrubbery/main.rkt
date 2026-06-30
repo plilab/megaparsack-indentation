@@ -338,7 +338,7 @@
                      inner))]
       (pure `(quotes . ,groups)))))
 
-                 
+
 
 (define opener-closers/p
   (or/p
@@ -450,7 +450,7 @@
      (process left-trimmed)]
     [_
      (process xs)]))
-    
+
 
 ;; XXX: This adopts the lexer's assumption that keywords are identifiers. This
 ;; is different from whatever the shrubbery specification asks, but it's how the
@@ -502,7 +502,7 @@
     [contents-or-ats <- (many/p (syntax-box/p (do (?/p at-comment) (or/p (token/p 'at-content) (delay/p at/p)))))]
     (token/p 'at-closer)
     (pure `(group (brackets . ,(process-at-text contents-or-ats))))))
- 
+
 
 (define at/p
   (do
@@ -548,7 +548,7 @@
                 (pure `(at (parens ,@texts))))))]
     (?/p non-newline-whitespace/p)
     (pure at)))
-      
+
 (define (splice-at-notation line)
   (let loop ([xs line] [acc '()])
     (if (null? xs)
@@ -573,7 +573,7 @@
         (token-string=/p 'closer "»")
         (closer/p ")")))
     (pure `(at . ,(cdr group)))))
-    
+
 
 
 
@@ -680,7 +680,7 @@
       [alts <- (sequence+/p alt-branch void/p)]
       (pure `(alts . ,alts)))))
 
-  
+
 (define (group-sequence #:in-alt? [in-alt? #f])
   (define separator/p (many+/p semicolon/p))
   (define parser/p (group/p #:in-alt? in-alt?))
@@ -770,7 +770,7 @@
     ;; 3. The #lang line itself
     (define pattern 
       #px"^(?:#![^\r\n]*\r?\n)?(?:\\s+|;[^\r\n]*\r?\n|(?s:#\\|.*?\\|#))*#lang[^\r\n]*\r?\n?")
-    
+
     (regexp-match pattern port)
     (void))
 
@@ -835,4 +835,4 @@
   ; (check-equal? (p "a\n   b") (failure '(multi (group a) (group b))) "Two groups")
   ; (check-equal? (p "a b c d\n\n   e f g h") (failure '(multi (group a b c d) (group e f g h))) "Groups should start on same indentation")
   ; (check-equal? (p "a b: d\nc") (success '(multi (group a b (block (group d))) (group c))) "block then group")
-  
+
