@@ -32,7 +32,7 @@
     [_ 0]))
 
 (define parser-init
-  (indent-init #:<= column<=?
+  (indent-init #:<= (lambda (x y) (column<=? x y #:incomparable (thunk (error "ow, incomparable mixes of tabs and spaces")))) ; TODO Handle this gracefully
                #:sub1 column-sub1
                #:bottom 0
                #:get (lambda (token) (token-column token))
