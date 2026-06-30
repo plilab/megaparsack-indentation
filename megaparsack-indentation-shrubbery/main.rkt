@@ -4,10 +4,12 @@
 (require racket/match)
 (require racket/list)
 (require racket/string)
+(require racket/contract)
 (require racket/function)
 (require racket/syntax-srcloc)
 (require data/monad)
 (require data/applicative)
+(require (rename-in data/functor [map fmap]))
 (require megaparsack)
 (require megaparsack-indentation)
 (require scribble/srcdoc
@@ -31,14 +33,36 @@
      (column-sub1 rest)]
     [_ 0]))
 
-(define parser-init
+(define config-init
   (indent-init #:<= (lambda (x y) (column<=? x y #:incomparable (thunk (error "ow, incomparable mixes of tabs and spaces")))) ; TODO Handle this gracefully
                #:sub1 column-sub1
                #:bottom 0
-               #:get (lambda (token) (token-column token))
-               #:srcloc (lambda (token) (syntax-srcloc (token-value token)))
+               #:get token-column
+               #:srcloc (compose1 syntax-srcloc token-value)
                #:wrap/p identity
                #:unwrap identity))
+
+(struct scope (elem-stxs prop-stx))
+
+(define (make-scope elem-stxs raw raw-prefix raw-suffix)
+  (define (add-prop-if-present stx key val)
+    (if (void? val) stx (syntax-property stx key val)))
+
+  (let* ([stx (add-prop-if-present #'() 'raw raw)]
+         [stx (add-prop-if-present stx 'raw-prefix raw-prefix)]
+         [stx (add-prop-if-present stx 'raw-suffix raw-suffix)])
+    (scope elem-stxs stx)))
+
+(define/contract (scope-box->syntax id block-stx)
+  (-> symbol? syntax-box? (syntax/c list?))
+
+  (match-define (syntax-box (scope elem-stxs prop-stx) block-srcloc) block-stx)
+
+  (define header (datum->syntax #f id block-srcloc prop-stx))
+  (datum->syntax #f (cons header elem-stxs)))
+  
+
+(define insensitive-parameter (make-parser-parameter #f))
 
 ;;;; ------------------------
 ;;;; Token and lexeme parsers
@@ -66,7 +90,7 @@
    (symbol->string name)
    (do
      [token <- (indent/p (satisfy/p (lambda (x) (and (token? x) (eq? (token-name x) name)))))]
-     (pure (syntax->datum (token-value token))))))
+     (pure (token-value token)))))
 
 ;; lexeme/p: string? -> parser?
 ;;
@@ -662,14 +686,14 @@
 (define block/p
   (local-indentation/p '>
                        (do
-                         [groups <- (delay/p (group+/p))]
-                         (pure `(block . ,groups)))))
+                         [groups <- (delay/p (syntax-box/p (fmap (lambda (x) (make-scope x (void) (void) (void))) (group+/p))))]
+                         (pure (scope-box->syntax 'block groups)))))
 
 (define block-in-alt/p
   (local-indentation/p '>
                        (do
-                         [groups <- (delay/p (group+/p #:in-alt? #t))]
-                         (pure `(block . ,groups)))))
+                         [groups <- (delay/p (syntax-box/p (fmap (lambda (x) (make-scope x (void) (void) (void))) (group+/p #:in-alt? #t))))]
+                         (pure (scope-box->syntax 'block groups)))))
 
 
 (define alts/p
@@ -755,7 +779,7 @@
    (lex-all in (lambda (token explanation) (raise (error (cons token explanation)))))))
 
 (define (shrubbery-parser str)
-  (parse (do parser-init document/p) (lex str)))
+  (parse (do config-init document/p) (lex str)))
 
 
 ;;;; Testing
