@@ -1,13 +1,16 @@
 #lang racket/base
 
-(require data/applicative)
-(require data/either)
-(require data/monad)
-(require megaparsack)
-(require racket/contract)
-(require racket/match)
-(require racket/format)
-(require racket/function)
+(require
+  racket/contract
+  racket/format
+  racket/function
+  racket/match
+
+  data/applicative
+  data/either
+  data/monad
+
+  megaparsack)
 
 (module+ test
   (require rackunit))
@@ -28,7 +31,7 @@
 (struct indent-range (lower upper) #:transparent)
 (define range-parameter (make-parser-parameter (indent-range (bound 0 #t) inf-indentation)))
 
-
+;; Checks whether the argument is a valid relation.
 (define (relation? a)
   (or (eq? '> a)
       (eq? '>= a)
@@ -36,14 +39,33 @@
       (eq? '* a)
       (and (pair? a) (eq? (car a) 'const) (not (inf-indentation? a)))))
 
-(struct indent-state (absmode relation) #:transparent)
+;; The indent-state struct holds the information about how to handle the
+;; indentation of the next token.
+;;
+;; `relation` specifies the relation when `absmode` is `#f`. If `absmode` is
+;; `#t`, then the immediate next token's indentation is handled by the `=`
+;; relation, after which absmode is set to `#f`
+(struct indent-state (absmode relation) #:transparent
+  #:guard
+  (lambda (absmode relation _name)
+    (and (boolean? absmode) (relation? relation))))
 (define state-param (make-parser-parameter (indent-state #f '>=)))
 (define (effective-relation state)
   (if (indent-state-absmode state)
       '=
       (indent-state-relation state)))
 
-
+;; Token operators that are used to manipulate and access indentation from
+;; tokens.
+;;
+;; The indentation structure is defined by `<=` `sub1` and `bottom` (the lowest
+;; value possible). `get` is the indentation accessor.
+;;
+;; `srcloc` is only used for error reporting. TODO see if this can be removed.
+;;
+;; `wrap/p` and `unwrap` are for wrapping around `indent/p` while still
+;; preserving the entire operation as one combined parse. See `indent/p` in the
+;; external documentation for more info.
 (struct op (<= sub1 bottom get srcloc wrap/p unwrap))
 (define ((flip f) x y) (f y x))
 (define (op-> op) (compose1 not (op-<= op)))
@@ -51,6 +73,8 @@
 (define (op-< op) (compose1 not (flip (op-<= op))))
 
 (define op-param
+  ;; The default parameter works on the syntax column of any megaparsack token
+  ;; stream.
   (make-parser-parameter
     (op
       <=
@@ -61,6 +85,8 @@
       syntax-box/p
       syntax-box-datum)))
 
+;; Initializes the indentation system. This needs to be executed at the start
+;; of every parse call.
 (define (indent-init #:<= [<= <=]
                      #:sub1 [sub1 sub1]
                      #:bottom [bottom 0]
@@ -70,7 +96,7 @@
                      #:unwrap [unwrap syntax-box-datum])
   (do
     (range-parameter (indent-range (bound bottom 0) inf-indentation))
-    (op-param 
+    (op-param
       (op
         <=
         sub1
@@ -149,24 +175,24 @@
   (try/p
     (do
 
-     [state <- (state-param)]
-     (define relation (effective-relation state))
+      [state <- (state-param)]
+      (define relation (effective-relation state))
 
-     [prev-range <- (range-parameter)]
+      [prev-range <- (range-parameter)]
 
-     [op <- (op-param)]
+      [op <- (op-param)]
 
-     [box <- ((op-wrap/p op) parser)]
+      [box <- ((op-wrap/p op) parser)]
 
-     (define indent ((op-get op) box))
-     (cond
-       [(valid-indentation? prev-range relation op indent)
-        (define new-range (update-indentation prev-range relation op indent))
-        (do
-          (range-parameter new-range)
-          (state-param (struct-copy indent-state state [absmode #f]))
-          (pure ((op-unwrap op) box)))]
-       [else
+      (define indent ((op-get op) box))
+      (cond
+        [(valid-indentation? prev-range relation op indent)
+         (define new-range (update-indentation prev-range relation op indent))
+         (do
+           (range-parameter new-range)
+           (state-param (struct-copy indent-state state [absmode #f]))
+           (pure ((op-unwrap op) box)))]
+        [else
          (match-define (indent-range (bound lower-value lower-steps) upper) prev-range)
          (fail/p (message
                    ((op-srcloc op) box)
@@ -180,7 +206,7 @@
     [state <- (state-param)]
     (parameterize/p
       ([state-param (struct-copy indent-state state
-                                 [relation (relation-transformer (indent-state-relation state))])])
+                      [relation (relation-transformer (indent-state-relation state))])])
       parser)))
 
 
@@ -190,11 +216,11 @@
   (define (make-local-range op outer-range)
     (match-define (indent-range (and lower (bound lower-value lower-steps)) upper) outer-range)
     (match cmp
-          [(cons 'const x) (indent-range (bound x 0) x)]
-          ['* (indent-range (bound (op-bottom op) 0) inf-indentation)]
-          ['= (indent-range lower upper)]
-          ['>= (indent-range lower inf-indentation)]
-          ['> (indent-range (bound lower-value (add1 lower-steps)) inf-indentation)]))
+      [(cons 'const x) (indent-range (bound x 0) x)]
+      ['* (indent-range (bound (op-bottom op) 0) inf-indentation)]
+      ['= (indent-range lower upper)]
+      ['>= (indent-range lower inf-indentation)]
+      ['> (indent-range (bound lower-value (add1 lower-steps)) inf-indentation)]))
 
   (define (update-outer-range op #:outer outer-range #:local local-range)
     (match-define (indent-range outer-lower outer-upper) outer-range)
@@ -208,7 +234,7 @@
               [(or (inf-indentation? local-upper) ((op-< op) outer-upper local-upper)) outer-upper]
               [((op-> op) local-upper (op-bottom op)) ((op-sub1 sub1) local-upper)]
               [else (error "local-indentation: assertion failed: local-upper > 0")]))
-          (indent-range outer-lower restricted-upper)]))
+       (indent-range outer-lower restricted-upper)]))
 
   (do
     [(indent-state absmode _) <- (state-param)] ; previous indentation interval
@@ -224,17 +250,17 @@
       [absmode parser]
       [else
        (do
-        [op <- (op-param)]
+         [op <- (op-param)]
 
-        [outer-range <- (range-parameter)]
-        (range-parameter (make-local-range op outer-range))
+         [outer-range <- (range-parameter)]
+         (range-parameter (make-local-range op outer-range))
 
-        [parsed-expression <- parser]
+         [parsed-expression <- parser]
 
-        [local-range <- (range-parameter)]
-        (range-parameter (update-outer-range op #:outer outer-range #:local local-range))
+         [local-range <- (range-parameter)]
+         (range-parameter (update-outer-range op #:outer outer-range #:local local-range))
 
-        (pure parsed-expression))])))
+         (pure parsed-expression))])))
 
 (define/contract (absolute-indentation/p parser #:local? [local? #f])
   (-> parser? parser?)
@@ -257,26 +283,27 @@
   ;; Parens example
   (define bracket-parser
     (many/p
-     (do whitespace/p
-       [x <- (or/p
-              (local-token-mode/p (const '=)
-                                  (do
-                                    (indent/p (char/p #\())
-                                    whitespace/p
-                                    [x <- (local-indentation/p '> bracket-parser)]
-                                    whitespace/p
-                                    (indent/p (char/p #\)))
-                                    (pure (list 'parens x))))
-              (local-token-mode/p (const '>=)
-                                  (do
-                                    (indent/p (char/p #\[))
-                                    whitespace/p
-                                    [x <- (local-indentation/p '> bracket-parser)]
-                                    whitespace/p
-                                    (indent/p (char/p #\]))
-                                    (pure (list 'bracket x)))))]
-       whitespace/p
-       (pure x))))
+      (do
+        whitespace/p
+        [x <- (or/p
+                (local-token-mode/p (const '=)
+                                    (do
+                                      (indent/p (char/p #\())
+                                      whitespace/p
+                                      [x <- (local-indentation/p '> bracket-parser)]
+                                      whitespace/p
+                                      (indent/p (char/p #\)))
+                                      (pure (list 'parens x))))
+                (local-token-mode/p (const '>=)
+                                    (do
+                                      (indent/p (char/p #\[))
+                                      whitespace/p
+                                      [x <- (local-indentation/p '> bracket-parser)]
+                                      whitespace/p
+                                      (indent/p (char/p #\]))
+                                      (pure (list 'bracket x)))))]
+        whitespace/p
+        (pure x))))
 
   (check-equal? (parse-string bracket-parser "(  [(\n    ) ]\n)") (success '((parens ((bracket ((parens ()))))))))
 
