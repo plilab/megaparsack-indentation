@@ -5,7 +5,7 @@
 
 (provide corpus-path)
 
-(define-runtime-path corpus-path "corpus/files")
+(define-runtime-path corpus-path "corpus")
 
 (module+ test
   (run-rhombus-compatibility-tests (list corpus-path)))
